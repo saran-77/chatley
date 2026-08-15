@@ -33,6 +33,7 @@ export type Database = {
       conversation_members: {
         Row: {
           conversation_id: string
+          hidden_at: string | null
           id: string
           joined_at: string
           last_read_at: string | null
@@ -43,6 +44,7 @@ export type Database = {
         }
         Insert: {
           conversation_id: string
+          hidden_at?: string | null
           id?: string
           joined_at?: string
           last_read_at?: string | null
@@ -53,6 +55,7 @@ export type Database = {
         }
         Update: {
           conversation_id?: string
+          hidden_at?: string | null
           id?: string
           joined_at?: string
           last_read_at?: string | null
@@ -183,27 +186,36 @@ export type Database = {
         Row: {
           body: string
           conversation_id: string
+          deleted_at: string | null
+          edited_at: string | null
           id: string
           key_epoch: number | null
           nonce: string | null
+          reply_to_id: string | null
           sender_id: string | null
           sent_at: string
         }
         Insert: {
           body: string
           conversation_id: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           key_epoch?: number | null
           nonce?: string | null
+          reply_to_id?: string | null
           sender_id?: string | null
           sent_at?: string
         }
         Update: {
           body?: string
           conversation_id?: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           key_epoch?: number | null
           nonce?: string | null
+          reply_to_id?: string | null
           sender_id?: string | null
           sent_at?: string
         }
@@ -213,6 +225,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
@@ -231,6 +250,7 @@ export type Database = {
           display_name: string
           id: string
           identity_pub_key: string | null
+          last_seen_at: string | null
           status: string | null
         }
         Insert: {
@@ -239,6 +259,7 @@ export type Database = {
           display_name: string
           id: string
           identity_pub_key?: string | null
+          last_seen_at?: string | null
           status?: string | null
         }
         Update: {
@@ -247,6 +268,7 @@ export type Database = {
           display_name?: string
           id?: string
           identity_pub_key?: string | null
+          last_seen_at?: string | null
           status?: string | null
         }
         Relationships: []

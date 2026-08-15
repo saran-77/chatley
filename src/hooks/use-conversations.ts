@@ -11,11 +11,12 @@ export type MembershipStatus = "pending" | "joined"
 
 export type ChatMember = Tables<"profiles"> & {
   membershipStatus: MembershipStatus
+  lastReadAt: string | null
 }
 
 type LastMessage = Pick<
   Tables<"messages">,
-  "id" | "conversation_id" | "body" | "nonce" | "sender_id" | "sent_at"
+  "id" | "conversation_id" | "body" | "nonce" | "sender_id" | "sent_at" | "deleted_at"
 >
 
 export type ConversationItem = {
@@ -29,6 +30,7 @@ export type ConversationItem = {
   lastPreview: string
   lastReadAt: string | null
   pinnedAt: string | null
+  hiddenAt: string | null
   myStatus: MembershipStatus
 }
 
@@ -38,8 +40,22 @@ export function inviteUrl(token: string) {
 
 function previewLastMessage(message: LastMessage | null) {
   if (!message) return "No messages yet"
+  if (message.deleted_at) return "This message was deleted"
   if (message.nonce) return "Unavailable message"
   return previewText(parsePayload(message.body))
+}
+
+export function isMessageReadByOthers(
+  sentAt: string,
+  members: ChatMember[],
+  userId: string | undefined,
+) {
+  if (!userId) return false
+  const others = members.filter(
+    (member) => member.id !== userId && member.membershipStatus === "joined",
+  )
+  if (!others.length) return false
+  return others.every((member) => member.lastReadAt && member.lastReadAt >= sentAt)
 }
 
 export function useConversations() {
@@ -53,7 +69,7 @@ export function useConversations() {
       const { data, error } = await supabase
         .from("conversations")
         .select(
-          "id, type, name, avatar_path, invite_token, created_at, conversation_members(user_id, last_read_at, pinned_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, sender_id, sent_at)",
+          "id, type, name, avatar_path, invite_token, created_at, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, sender_id, sent_at, deleted_at)",
         )
         .order("created_at", { ascending: false })
       if (error) throw error
@@ -66,6 +82,7 @@ export function useConversations() {
             return {
               ...profile,
               membershipStatus: (member.status === "pending" ? "pending" : "joined") as MembershipStatus,
+              lastReadAt: member.last_read_at ?? null,
             }
           })
           .filter(Boolean) as ChatMember[]
@@ -99,11 +116,18 @@ export function useConversations() {
           lastPreview,
           lastReadAt: myMembership?.last_read_at ?? null,
           pinnedAt: myMembership?.pinned_at ?? null,
+          hiddenAt: myMembership?.hidden_at ?? null,
           myStatus,
         }
       })
 
-      return items.sort((a, b) => {
+      return items
+        .filter((item) => {
+          if (!item.hiddenAt) return true
+          if (!item.lastMessage) return false
+          return item.lastMessage.sent_at > item.hiddenAt
+        })
+        .sort((a, b) => {
         if (a.pinnedAt && !b.pinnedAt) return -1
         if (!a.pinnedAt && b.pinnedAt) return 1
         if (a.pinnedAt && b.pinnedAt) return b.pinnedAt.localeCompare(a.pinnedAt)
@@ -136,6 +160,11 @@ export function useConversations() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
         invalidate,
       )
       .subscribe()
@@ -229,6 +258,15 @@ export async function setConversationPinned(
   const { error } = await supabase
     .from("conversation_members")
     .update({ pinned_at: pinned ? new Date().toISOString() : null })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+  if (error) throw error
+}
+
+export async function hideConversation(conversationId: string, userId: string) {
+  const { error } = await supabase
+    .from("conversation_members")
+    .update({ hidden_at: new Date().toISOString() })
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
   if (error) throw error

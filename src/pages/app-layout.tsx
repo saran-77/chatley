@@ -1,4 +1,4 @@
-import { LogOut, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Settings } from "lucide-react"
+import { LogOut, MessageCircle, MoreHorizontal, Pin, PinOff, Plus, Settings, Trash2 } from "lucide-react"
 import { LayoutGroup, AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import { useEffect, useRef, useState } from "react"
@@ -12,6 +12,14 @@ import { UnreadBadge } from "@/components/unread-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -19,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
+  hideConversation,
   setConversationPinned,
   useConversations,
   type ConversationItem,
@@ -49,6 +58,8 @@ export function AppLayout() {
   const queryClient = useQueryClient()
   const onlineIds = usePresence()
   const [query, setQuery] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<ConversationItem | null>(null)
+  const [hiding, setHiding] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const onList = location.pathname === "/"
@@ -201,6 +212,13 @@ export function AppLayout() {
                           {conversation.pinnedAt ? <PinOff /> : <Pin />}
                           {conversation.pinnedAt ? "Unpin" : "Pin chat"}
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setDeleteTarget(conversation)}
+                        >
+                          <Trash2 />
+                          Delete chat
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     </div>
@@ -244,6 +262,53 @@ export function AppLayout() {
       <main className={cn("min-w-0 flex-1", onList && "max-md:hidden")}>
         <Outlet />
       </main>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !hiding) setDeleteTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this chat?</DialogTitle>
+            <DialogDescription>
+              It will leave your list. Messages stay for other people, and a new
+              message can bring the chat back.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={hiding}
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={hiding || !deleteTarget || !user}
+              onClick={async () => {
+                if (!deleteTarget || !user) return
+                setHiding(true)
+                try {
+                  await hideConversation(deleteTarget.id, user.id)
+                  await queryClient.invalidateQueries({
+                    queryKey: ["conversations", user.id],
+                  })
+                  if (location.pathname === `/c/${deleteTarget.id}`) {
+                    navigate("/", { replace: true })
+                  }
+                  setDeleteTarget(null)
+                } finally {
+                  setHiding(false)
+                }
+              }}
+            >
+              {hiding ? "Deleting…" : "Delete chat"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

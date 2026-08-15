@@ -88,3 +88,16 @@ export async function downloadChatFile(payload: MediaPayload) {
   if (error || !data) throw error ?? new Error("Could not download file")
   return new Blob([data], { type: payload.mime })
 }
+
+export async function uploadUserAvatar(userId: string, file: File) {
+  if (!file.type.startsWith("image/")) throw new Error("Choose an image file")
+  if (file.size > IMAGE_MAX_BYTES) throw new Error("Images must be 10MB or smaller")
+  const path = `${userId}/avatar${fileExtension(file.name) || ".jpg"}`
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    contentType: file.type || "image/jpeg",
+    upsert: true,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path)
+  return `${data.publicUrl}?t=${Date.now()}`
+}

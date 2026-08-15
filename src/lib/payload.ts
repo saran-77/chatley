@@ -99,3 +99,9 @@ export function previewText(payload: Payload | null): string {
   if (payload.kind === "voice") return "Voice message"
   return payload.name || "File"
 }
+
+export function snippetText(payload: Payload | null, fallback = "Message") {
+  const text = previewText(payload)
+  if (!payload) return fallback
+  return text.length > 80 ? `${text.slice(0, 77)}…` : text
+}

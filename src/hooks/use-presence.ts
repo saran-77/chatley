@@ -5,6 +5,7 @@ import { useAuth } from "@/auth/auth-provider"
 import { supabase } from "@/lib/supabase"
 
 const PRESENCE_TOPIC = "online-users"
+const LAST_SEEN_MS = 45_000
 const presenceListeners = new Set<(ids: Set<string>) => void>()
 let presenceChannel: RealtimeChannel | null = null
 let presenceJoin: Promise<void> | null = null
@@ -17,6 +18,13 @@ function currentOnlineIds() {
 function emitPresence() {
   const ids = currentOnlineIds()
   presenceListeners.forEach((listener) => listener(ids))
+}
+
+async function touchLastSeen(userId: string) {
+  await supabase
+    .from("profiles")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("id", userId)
 }
 
 async function joinPresence(userId: string) {
@@ -36,6 +44,7 @@ async function joinPresence(userId: string) {
     channel.on("presence", { event: "sync" }, emitPresence).subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await channel.track({ user_id: userId, at: new Date().toISOString() })
+        await touchLastSeen(userId)
       }
     })
     presenceChannel = channel
@@ -66,8 +75,23 @@ export function usePresence() {
     const listener = (ids: Set<string>) => setOnlineIds(ids)
     presenceListeners.add(listener)
     void joinPresence(user.id).then(() => listener(currentOnlineIds()))
+
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === "visible") void touchLastSeen(user.id)
+    }, LAST_SEEN_MS)
+
+    const onVisibility = () => {
+      void touchLastSeen(user.id)
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pagehide", onVisibility)
+
     return () => {
       presenceListeners.delete(listener)
+      window.clearInterval(heartbeat)
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pagehide", onVisibility)
+      void touchLastSeen(user.id)
       leavePresence()
     }
   }, [user?.id])

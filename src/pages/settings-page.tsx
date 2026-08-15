@@ -1,5 +1,5 @@
-import { ArrowLeft } from "lucide-react"
-import { useEffect, useState } from "react"
+import { ArrowLeft, Camera } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router"
 import { motion, useReducedMotion } from "framer-motion"
 
@@ -19,10 +19,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { fadeSlide } from "@/lib/motion"
+import { uploadUserAvatar } from "@/lib/media"
 import { supabase } from "@/lib/supabase"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function SettingsPage() {
   const { profile, refreshProfile, deleteAccount } = useAuth()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const [displayName, setDisplayName] = useState(profile?.display_name ?? "")
@@ -30,6 +33,8 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const photoRef = useRef<HTMLInputElement>(null)
   const enter = fadeSlide(reduced, 0, 10)
 
   useEffect(() => {
@@ -53,14 +58,53 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <Avatar size="lg">
-          <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
-          <AvatarFallback>{(profile?.display_name ?? "You").slice(0, 2)}</AvatarFallback>
-        </Avatar>
+        <button
+          type="button"
+          className="relative"
+          onClick={() => photoRef.current?.click()}
+          aria-label="Change profile photo"
+        >
+          <Avatar size="lg">
+            <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
+            <AvatarFallback>{(profile?.display_name ?? "You").slice(0, 2)}</AvatarFallback>
+          </Avatar>
+          <span className="absolute right-0 bottom-0 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+            <Camera className="size-3" />
+          </span>
+        </button>
         <div>
           <p className="text-sm font-medium">{profile?.display_name}</p>
-          <p className="text-xs text-muted-foreground">{profile?.status || "No status"}</p>
+          <p className="text-xs text-muted-foreground">
+            {uploadingPhoto ? "Uploading photo…" : profile?.status || "No status"}
+          </p>
         </div>
+        <input
+          ref={photoRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={async (event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ""
+            if (!file || !profile) return
+            setUploadingPhoto(true)
+            try {
+              const avatarUrl = await uploadUserAvatar(profile.id, file)
+              const { error } = await supabase
+                .from("profiles")
+                .update({ avatar_url: avatarUrl })
+                .eq("id", profile.id)
+              if (error) throw error
+              await refreshProfile()
+              void queryClient.invalidateQueries({ queryKey: ["conversations", profile.id] })
+              setMessage("Photo updated")
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "Could not update photo")
+            } finally {
+              setUploadingPhoto(false)
+            }
+          }}
+        />
       </div>
       <label className="grid gap-1 text-sm">
         Display name

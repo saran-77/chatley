@@ -1,11 +1,11 @@
-import { ArrowLeft, ImageIcon, Paperclip, Send } from "lucide-react"
+import { ArrowLeft, ImageIcon, Paperclip, Pencil, Send, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useMemo, useRef, useState } from "react"
-import { Virtuoso } from "react-virtuoso"
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { Link, useNavigate, useParams } from "react-router"
 
 import { useAuth } from "@/auth/auth-provider"
-import { ChatMessageBubble } from "@/components/chat-message-bubble"
+import { ChatMessageBubble, ReplyQuote } from "@/components/chat-message-bubble"
 import { ConversationAvatar } from "@/components/conversation-avatar"
 import { EmojiButton } from "@/components/emoji-picker-panel"
 import { EmptyLottie } from "@/components/empty-lottie"
@@ -18,11 +18,12 @@ import { SendBurst } from "@/components/send-burst"
 import { TypingDots } from "@/components/typing-dots"
 import { VoiceRecorderButton } from "@/components/voice-recorder-button"
 import { Button } from "@/components/ui/button"
-import { inviteUrl, useConversations } from "@/hooks/use-conversations"
-import { useMessages } from "@/hooks/use-messages"
+import { inviteUrl, isMessageReadByOthers, useConversations } from "@/hooks/use-conversations"
+import { useMessages, type ChatMessage } from "@/hooks/use-messages"
 import { usePresence, useTyping } from "@/hooks/use-presence"
 import { useReactions } from "@/hooks/use-reactions"
 import { springPop } from "@/lib/motion"
+import { formatLastSeen } from "@/lib/time"
 
 export function ChatPage() {
   const { conversationId } = useParams()
@@ -37,7 +38,7 @@ export function ChatPage() {
       conversation.members
         .filter((member) => member.id !== user?.id)
         .every((member) => member.membershipStatus === "joined"))
-  const { data: messages = [], send, sendFile, sendImage, sendVoice, isLoading } =
+  const { data: messages = [], send, sendFile, sendImage, sendVoice, edit, remove, isLoading } =
     useMessages(conversationId, Boolean(canChat))
   const { reactions, toggleReaction, userId } = useReactions(
     conversationId,
@@ -50,9 +51,12 @@ export function ChatPage() {
   const [groupOpen, setGroupOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [burstId, setBurstId] = useState(0)
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
+  const [editing, setEditing] = useState<ChatMessage | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLInputElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const listRef = useRef<VirtuosoHandle>(null)
 
   const other = conversation?.members.find((member) => member.id !== user?.id)
   const joinedCount =
@@ -66,7 +70,7 @@ export function ChatPage() {
       ? `${joinedCount} members`
       : other && onlineIds.has(other.id)
         ? "Online"
-        : "Chat"
+        : formatLastSeen(other?.last_seen_at)
 
   const typingLabel = useMemo(() => {
     const names = conversation?.members
@@ -75,6 +79,11 @@ export function ChatPage() {
     if (!names?.length) return null
     return `${names.join(", ")} typing…`
   }, [conversation?.members, typingIds])
+
+  const messagesById = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  )
 
   function insertEmoji(emoji: string) {
     const field = textRef.current
@@ -91,6 +100,39 @@ export function ChatPage() {
       const cursor = start + emoji.length
       field.setSelectionRange(cursor, cursor)
     })
+  }
+
+  function memberName(senderId: string | null | undefined) {
+    if (!senderId) return "Message"
+    if (senderId === user?.id) return "You"
+    return conversation?.members.find((member) => member.id === senderId)?.display_name ?? "Message"
+  }
+
+  function startReply(message: ChatMessage) {
+    setEditing(null)
+    setReplyTo(message)
+    textRef.current?.focus()
+  }
+
+  function startEdit(message: ChatMessage) {
+    if (message.payload?.kind !== "text") return
+    setReplyTo(null)
+    setEditing(message)
+    setDraft(message.payload.text)
+    textRef.current?.focus()
+  }
+
+  function cancelComposerMode() {
+    if (editing) setDraft("")
+    setReplyTo(null)
+    setEditing(null)
+  }
+
+  function scrollToMessage(id: string) {
+    const index = messages.findIndex((message) => message.id === id)
+    if (index >= 0) {
+      listRef.current?.scrollToIndex({ index, align: "center", behavior: "smooth" })
+    }
   }
 
   if (!conversationId) return null
@@ -159,12 +201,17 @@ export function ChatPage() {
           </div>
         ) : (
           <Virtuoso
+            ref={listRef}
             className="h-full"
             data={messages}
             followOutput="smooth"
             itemContent={(_index, message) => {
               const mine = message.sender_id === user?.id
               const sender = conversation.members.find((member) => member.id === message.sender_id)
+              const quoted = message.reply_to_id
+                ? messagesById.get(message.reply_to_id)
+                : undefined
+              const deleted = Boolean(message.deleted_at)
               return (
                 <ChatMessageBubble
                   messageId={message.id}
@@ -172,17 +219,46 @@ export function ChatPage() {
                   senderName={
                     conversation.type === "group" && !mine ? sender?.display_name : null
                   }
+                  sentAt={message.sent_at}
+                  edited={Boolean(message.edited_at)}
+                  deleted={deleted}
+                  read={isMessageReadByOthers(
+                    message.sent_at,
+                    conversation.members,
+                    user?.id,
+                  )}
+                  canEdit={mine && message.payload?.kind === "text"}
+                  onReply={deleted ? undefined : () => startReply(message)}
+                  onEdit={
+                    mine && message.payload?.kind === "text" ? () => startEdit(message) : undefined
+                  }
+                  onDelete={mine && !deleted ? () => void remove.mutateAsync(message.id) : undefined}
                 >
-                  <MessageBody
-                    payload={message.payload}
-                    error={message.error}
-                  />
-                  <MessageReactions
-                    messageId={message.id}
-                    reactions={reactions}
-                    userId={userId}
-                    onToggle={(id, emoji) => void toggleReaction(id, emoji)}
-                  />
+                  {quoted ? (
+                    <ReplyQuote
+                      mine={mine}
+                      senderName={memberName(quoted.sender_id)}
+                      payload={quoted.payload}
+                      error={quoted.error}
+                      onClick={() => scrollToMessage(quoted.id)}
+                    />
+                  ) : message.reply_to_id ? (
+                    <ReplyQuote
+                      mine={mine}
+                      senderName="Message"
+                      payload={null}
+                      error="Original message"
+                    />
+                  ) : null}
+                  <MessageBody payload={message.payload} error={message.error} />
+                  {!deleted ? (
+                    <MessageReactions
+                      messageId={message.id}
+                      reactions={reactions}
+                      userId={userId}
+                      onToggle={(id, emoji) => void toggleReaction(id, emoji)}
+                    />
+                  ) : null}
                 </ChatMessageBubble>
               )
             }}
@@ -227,15 +303,73 @@ export function ChatPage() {
         {composerError ? (
           <p className="mb-1 text-xs text-destructive">{composerError}</p>
         ) : null}
+        {editing ? (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border bg-background/40 px-2 py-1.5">
+            <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
+            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              Editing message
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Cancel edit"
+              onClick={() => {
+                setEditing(null)
+                setDraft("")
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        ) : replyTo ? (
+          <div className="mb-2 flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <ReplyQuote
+                senderName={memberName(replyTo.sender_id)}
+                payload={replyTo.payload}
+                error={replyTo.error}
+                onClick={() => scrollToMessage(replyTo.id)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="mt-1"
+              aria-label="Cancel reply"
+              onClick={() => setReplyTo(null)}
+            >
+              <X />
+            </Button>
+          </div>
+        ) : null}
         <form
           className="flex flex-col gap-2 md:flex-row md:items-end"
           onSubmit={(event) => {
             event.preventDefault()
             const text = draft.trim()
             if (!text) return
+            setComposerError(null)
+            if (editing) {
+              void edit.mutateAsync({ messageId: editing.id, text }).catch((err) => {
+                setComposerError(err instanceof Error ? err.message : "Could not edit message")
+              })
+              setEditing(null)
+              setDraft("")
+              return
+            }
             setBurstId((current) => current + 1)
-            void send.mutateAsync({ kind: "text", text })
+            void send
+              .mutateAsync({
+                payload: { kind: "text", text },
+                replyToId: replyTo?.id,
+              })
+              .catch((err) => {
+                setComposerError(err instanceof Error ? err.message : "Could not send")
+              })
             setDraft("")
+            setReplyTo(null)
           }}
         >
           <input
@@ -247,9 +381,12 @@ export function ChatPage() {
               event.target.value = ""
               if (!file) return
               setComposerError(null)
-              void sendFile.mutateAsync(file).catch((err) => {
-                setComposerError(err instanceof Error ? err.message : "Could not send file")
-              })
+              void sendFile
+                .mutateAsync({ file, replyToId: replyTo?.id })
+                .then(() => setReplyTo(null))
+                .catch((err) => {
+                  setComposerError(err instanceof Error ? err.message : "Could not send file")
+                })
             }}
           />
           <input
@@ -262,52 +399,66 @@ export function ChatPage() {
               event.target.value = ""
               if (!file) return
               setComposerError(null)
-              void sendImage.mutateAsync(file).catch((err) => {
-                setComposerError(err instanceof Error ? err.message : "Could not send image")
-              })
+              void sendImage
+                .mutateAsync({ file, replyToId: replyTo?.id })
+                .then(() => setReplyTo(null))
+                .catch((err) => {
+                  setComposerError(err instanceof Error ? err.message : "Could not send image")
+                })
             }}
           />
-          <div className="flex items-center gap-1 md:contents">
-          <EmojiButton label="Insert emoji" onPick={insertEmoji} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Send image"
-            onClick={() => imageRef.current?.click()}
-          >
-            <ImageIcon />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Attach file"
-            onClick={() => fileRef.current?.click()}
-          >
-            <Paperclip />
-          </Button>
-          </div>
+          {!editing ? (
+            <div className="flex items-center gap-1 md:contents">
+              <EmojiButton label="Insert emoji" onPick={insertEmoji} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Send image"
+                onClick={() => imageRef.current?.click()}
+              >
+                <ImageIcon />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Attach file"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Paperclip />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 md:contents">
+              <EmojiButton label="Insert emoji" onPick={insertEmoji} />
+            </div>
+          )}
           <div className="flex min-w-0 flex-1 items-end gap-2">
           <textarea
             ref={textRef}
             value={draft}
             rows={1}
-            aria-label="Message"
-            placeholder="Write a message"
+            aria-label={editing ? "Edit message" : "Message"}
+            placeholder={editing ? "Edit your message" : "Write a message"}
             className="max-h-32 min-h-9 min-w-0 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => {
               setDraft(event.target.value)
-              broadcastTyping()
+              if (!editing) broadcastTyping()
             }}
             onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                cancelComposerMode()
+                return
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault()
                 event.currentTarget.form?.requestSubmit()
               }
             }}
           />
-          {draft.trim() ? (
+          {draft.trim() || editing ? (
             <motion.div
               className="relative shrink-0"
               whileTap={reduced ? undefined : { scale: 0.88 }}
@@ -318,12 +469,12 @@ export function ChatPage() {
                 type="submit"
                 size="icon"
                 className="accent-glow"
-                aria-label="Send"
-                disabled={send.isPending}
+                aria-label={editing ? "Save edit" : "Send"}
+                disabled={send.isPending || edit.isPending}
               >
-                <Send />
+                {editing ? <Pencil /> : <Send />}
               </Button>
-              <SendBurst burstId={burstId} />
+              {!editing ? <SendBurst burstId={burstId} /> : null}
             </motion.div>
           ) : (
             <VoiceRecorderButton
@@ -332,7 +483,12 @@ export function ChatPage() {
               onRecorded={async (file, durationMs) => {
                 setComposerError(null)
                 try {
-                  await sendVoice.mutateAsync({ file, durationMs })
+                  await sendVoice.mutateAsync({
+                    file,
+                    durationMs,
+                    replyToId: replyTo?.id,
+                  })
+                  setReplyTo(null)
                 } catch (err) {
                   setComposerError(err instanceof Error ? err.message : "Could not send voice note")
                 }
