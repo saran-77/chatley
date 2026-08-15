@@ -63,7 +63,7 @@ export function ChatMessageBubble({
   read?: boolean
   footer?: ReactNode
   children: ReactNode
-  onOpenActions?: () => void
+  onOpenActions?: (point: { x: number; y: number }) => void
 }) {
   const reduced = useReducedMotion()
   const shouldEnter = useRef(!seenIds.has(messageId))
@@ -102,14 +102,15 @@ export function ChatMessageBubble({
           onContextMenu={(event) => {
             if (!onOpenActions) return
             event.preventDefault()
-            onOpenActions()
+            onOpenActions({ x: event.clientX, y: event.clientY })
           }}
           onPointerDown={(event) => {
             if (!onOpenActions || event.button !== 0) return
             origin.current = { x: event.clientX, y: event.clientY }
             pressTimer.current = window.setTimeout(() => {
+              const point = origin.current
               origin.current = null
-              onOpenActions()
+              if (point) onOpenActions(point)
             }, 450)
           }}
           onPointerMove={(event) => {
@@ -124,14 +125,16 @@ export function ChatMessageBubble({
         >
           {senderName ? <p className="mb-1 text-[11px] opacity-80">{senderName}</p> : null}
           {children}
-          <div
-            className={cn(
-              "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-80",
-              mine ? "text-primary-foreground" : "text-muted-foreground",
-            )}
-          >
-            {edited && !deleted ? <span>edited</span> : null}
-            <span>{formatMessageTime(sentAt)}</span>
+          <div className="mt-1 flex items-center justify-end gap-1">
+            <div
+              className={cn(
+                "flex items-center gap-1 text-[10px] opacity-80",
+                mine ? "text-primary-foreground" : "text-muted-foreground",
+              )}
+            >
+              {edited && !deleted ? <span>edited</span> : null}
+              <span>{formatMessageTime(sentAt)}</span>
+            </div>
             {mine && !deleted ? <ReadReceipt read={Boolean(read)} /> : null}
           </div>
         </div>

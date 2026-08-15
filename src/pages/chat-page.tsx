@@ -12,6 +12,7 @@ import { EmojiButton, EmojiPickerPanel } from "@/components/emoji-picker-panel"
 import { EmptyLottie } from "@/components/empty-lottie"
 import { GroupInfoDialog } from "@/components/group-info-dialog"
 import { InviteActions } from "@/components/invite-actions"
+import { MessageActionItem, MessageActionMenu } from "@/components/message-action-menu"
 import { MessageBody } from "@/components/message-body"
 import { MessageReactions } from "@/components/message-reactions"
 import { MotionToast } from "@/components/motion-toast"
@@ -71,7 +72,11 @@ export function ChatPage() {
   const [burstId, setBurstId] = useState(0)
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
   const [editing, setEditing] = useState<ChatMessage | null>(null)
-  const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null)
+  const [actionsFor, setActionsFor] = useState<{
+    message: ChatMessage
+    x: number
+    y: number
+  } | null>(null)
   const [confirmEveryone, setConfirmEveryone] = useState<ChatMessage | null>(null)
   const [reactionFor, setReactionFor] = useState<string | null>(null)
   const [composerEmojiOpen, setComposerEmojiOpen] = useState(false)
@@ -160,7 +165,7 @@ export function ChatPage() {
   }
 
   const emojiSheetOpen = composerEmojiOpen || Boolean(reactionFor)
-  const actionsMessage = actionsFor
+  const actionsMessage = actionsFor?.message
   const actionsMine = actionsMessage?.sender_id === user?.id
   const actionsDeleted = Boolean(actionsMessage?.deleted_at)
 
@@ -261,7 +266,7 @@ export function ChatPage() {
                     conversation.members,
                     user?.id,
                   )}
-                  onOpenActions={() => setActionsFor(message)}
+                  onOpenActions={(point) => setActionsFor({ message, ...point })}
                   footer={
                     deleted ? null : (
                       <MessageReactions
@@ -535,68 +540,60 @@ export function ChatPage() {
           </>
         )}
       </div>
-      <ActionSheet
-        open={Boolean(actionsMessage)}
-        onOpenChange={(open) => {
-          if (!open) setActionsFor(null)
-        }}
-        title="Message"
+      <MessageActionMenu
+        open={Boolean(actionsFor)}
+        x={actionsFor?.x ?? 0}
+        y={actionsFor?.y ?? 0}
+        onClose={() => setActionsFor(null)}
       >
-        <div className="grid gap-1">
-          {!actionsDeleted ? (
-            <Button
-              variant="ghost"
-              className="h-11 justify-start"
-              onClick={() => {
-                if (actionsMessage) startReply(actionsMessage)
-              }}
-            >
-              <Reply />
-              Reply
-            </Button>
-          ) : null}
-          {actionsMine && !actionsDeleted && actionsMessage?.payload?.kind === "text" ? (
-            <Button
-              variant="ghost"
-              className="h-11 justify-start"
-              onClick={() => {
-                if (actionsMessage) startEdit(actionsMessage)
-              }}
-            >
-              <Pencil />
-              Edit
-            </Button>
-          ) : null}
-          <Button
-            variant="ghost"
-            className="h-11 justify-start text-destructive hover:text-destructive"
-            onClick={() => {
+        {!actionsDeleted ? (
+          <MessageActionItem
+            onSelect={() => {
+              if (actionsMessage) startReply(actionsMessage)
+            }}
+          >
+            <Reply />
+            Reply
+          </MessageActionItem>
+        ) : null}
+        {actionsMine && !actionsDeleted && actionsMessage?.payload?.kind === "text" ? (
+          <MessageActionItem
+            onSelect={() => {
+              if (actionsMessage) startEdit(actionsMessage)
+            }}
+          >
+            <Pencil />
+            Edit
+          </MessageActionItem>
+        ) : null}
+        <MessageActionItem
+          destructive
+          onSelect={() => {
+            if (!actionsMessage) return
+            const id = actionsMessage.id
+            setActionsFor(null)
+            void hide.mutateAsync(id).catch((err) => {
+              setComposerError(err instanceof Error ? err.message : "Could not delete")
+            })
+          }}
+        >
+          <Trash2 />
+          Delete for me
+        </MessageActionItem>
+        {actionsMine && !actionsDeleted ? (
+          <MessageActionItem
+            destructive
+            onSelect={() => {
               if (!actionsMessage) return
-              const id = actionsMessage.id
+              setConfirmEveryone(actionsMessage)
               setActionsFor(null)
-              void hide.mutateAsync(id).catch((err) => {
-                setComposerError(err instanceof Error ? err.message : "Could not delete")
-              })
             }}
           >
             <Trash2 />
-            Delete for me
-          </Button>
-          {actionsMine && !actionsDeleted ? (
-            <Button
-              variant="ghost"
-              className="h-11 justify-start text-destructive hover:text-destructive"
-              onClick={() => {
-                setConfirmEveryone(actionsMessage)
-                setActionsFor(null)
-              }}
-            >
-              <Trash2 />
-              Delete for everyone
-            </Button>
-          ) : null}
-        </div>
-      </ActionSheet>
+            Delete for everyone
+          </MessageActionItem>
+        ) : null}
+      </MessageActionMenu>
       <ActionSheet
         open={emojiSheetOpen}
         onOpenChange={(open) => {
