@@ -1,7 +1,6 @@
 import { SmilePlus } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 
-import { EmojiPickerPanel } from "@/components/emoji-picker-panel"
 import { Button } from "@/components/ui/button"
 import type { Reaction } from "@/hooks/use-reactions"
 import { cn } from "@/lib/utils"
@@ -11,13 +10,14 @@ export function MessageReactions({
   reactions,
   userId,
   onToggle,
+  onAdd,
 }: {
   messageId: string
   reactions: Reaction[]
   userId: string | undefined
   onToggle: (messageId: string, emoji: string) => void
+  onAdd: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const grouped = useMemo(() => {
     const map = new Map<string, { count: number; mine: boolean }>()
     for (const reaction of reactions) {
@@ -31,13 +31,13 @@ export function MessageReactions({
   }, [messageId, reactions, userId])
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1">
+    <div className="mt-1 flex max-w-[min(88vw,28rem)] flex-wrap items-center gap-1">
       {grouped.map(([emoji, info]) => (
         <button
           key={emoji}
           type="button"
           className={cn(
-            "rounded-full border px-1.5 py-0.5 text-xs",
+            "min-h-8 rounded-full border px-2 py-0.5 text-xs",
             info.mine ? "border-primary bg-primary/10" : "border-border bg-background/60",
           )}
           onClick={() => onToggle(messageId, emoji)}
@@ -45,27 +45,16 @@ export function MessageReactions({
           {emoji} {info.count}
         </button>
       ))}
-      <div className="relative">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Add reaction"
-          onClick={() => setOpen((current) => !current)}
-        >
-          <SmilePlus />
-        </Button>
-        {open ? (
-          <div className="absolute bottom-full left-0 z-50 mb-2 w-[min(100vw-2rem,320px)]">
-            <EmojiPickerPanel
-              onPick={(emoji) => {
-                onToggle(messageId, emoji)
-                setOpen(false)
-              }}
-            />
-          </div>
-        ) : null}
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="size-8"
+        aria-label="Add reaction"
+        onClick={onAdd}
+      >
+        <SmilePlus />
+      </Button>
     </div>
   )
 }

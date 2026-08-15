@@ -1,20 +1,14 @@
-import { MoreHorizontal, Pencil, Reply, Trash2 } from "lucide-react"
 import { motion, useReducedMotion } from "framer-motion"
-import { useRef, useState, type ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 
 import { ReadReceipt } from "@/components/read-receipt"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { springSoft } from "@/lib/motion"
 import { snippetText, type Payload } from "@/lib/payload"
 import { formatMessageTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 const seenIds = new Set<string>()
+const MOVE_PX = 10
 
 export function ReplyQuote({
   senderName,
@@ -56,11 +50,9 @@ export function ChatMessageBubble({
   edited,
   deleted,
   read,
-  canEdit,
+  footer,
   children,
-  onReply,
-  onEdit,
-  onDelete,
+  onOpenActions,
 }: {
   messageId: string
   mine: boolean
@@ -69,27 +61,25 @@ export function ChatMessageBubble({
   edited?: boolean
   deleted?: boolean
   read?: boolean
-  canEdit?: boolean
+  footer?: ReactNode
   children: ReactNode
-  onReply?: () => void
-  onEdit?: () => void
-  onDelete?: () => void
+  onOpenActions?: () => void
 }) {
   const reduced = useReducedMotion()
   const shouldEnter = useRef(!seenIds.has(messageId))
   if (!seenIds.has(messageId)) seenIds.add(messageId)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const pressTimer = useRef<number>(0)
+  const pressTimer = useRef(0)
+  const origin = useRef<{ x: number; y: number } | null>(null)
   const offset = mine ? 18 : -18
-  const showActions = Boolean(!deleted && (onReply || (mine && (canEdit || onDelete))))
 
-  function openMenu() {
-    if (showActions) setMenuOpen(true)
+  function clearPress() {
+    window.clearTimeout(pressTimer.current)
+    origin.current = null
   }
 
   return (
     <motion.div
-      className={cn("flex px-4 py-1", mine ? "justify-end" : "justify-start")}
+      className={cn("flex px-3 py-1 sm:px-4", mine ? "justify-end" : "justify-start")}
       initial={
         !shouldEnter.current
           ? false
@@ -100,40 +90,39 @@ export function ChatMessageBubble({
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       transition={reduced ? { duration: 0.16 } : springSoft}
     >
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <div className={cn("flex max-w-[min(88%,28rem)] flex-col", mine ? "items-end" : "items-start")}>
         <div
           className={cn(
-            "group relative max-w-[min(75%,28rem)] rounded-2xl px-3 py-2 text-sm",
+            "touch-manipulation select-none rounded-2xl px-3 py-2 text-sm",
             mine
               ? "bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.48_0.08_145)_28%)] text-primary-foreground shadow-[0_10px_24px_-12px_color-mix(in_oklch,var(--primary),transparent_30%)]"
               : "glass-panel text-foreground shadow-[0_8px_20px_-14px_color-mix(in_oklch,var(--primary),transparent_55%)]",
             deleted && "opacity-80",
           )}
           onContextMenu={(event) => {
-            if (!showActions) return
+            if (!onOpenActions) return
             event.preventDefault()
-            openMenu()
+            onOpenActions()
           }}
-          onPointerDown={() => {
-            if (!showActions) return
-            pressTimer.current = window.setTimeout(openMenu, 450)
+          onPointerDown={(event) => {
+            if (!onOpenActions || event.button !== 0) return
+            origin.current = { x: event.clientX, y: event.clientY }
+            pressTimer.current = window.setTimeout(() => {
+              origin.current = null
+              onOpenActions()
+            }, 450)
           }}
-          onPointerUp={() => window.clearTimeout(pressTimer.current)}
-          onPointerLeave={() => window.clearTimeout(pressTimer.current)}
-          onPointerCancel={() => window.clearTimeout(pressTimer.current)}
+          onPointerMove={(event) => {
+            if (!origin.current) return
+            const dx = event.clientX - origin.current.x
+            const dy = event.clientY - origin.current.y
+            if (dx * dx + dy * dy > MOVE_PX * MOVE_PX) clearPress()
+          }}
+          onPointerUp={clearPress}
+          onPointerLeave={clearPress}
+          onPointerCancel={clearPress}
         >
-          {showActions ? (
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="absolute top-1 right-1 rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                aria-label="Message actions"
-              >
-                <MoreHorizontal className="size-3.5 opacity-80" />
-              </button>
-            </DropdownMenuTrigger>
-          ) : null}
-          {senderName ? <p className="mb-1 pr-5 text-[11px] opacity-80">{senderName}</p> : null}
+          {senderName ? <p className="mb-1 text-[11px] opacity-80">{senderName}</p> : null}
           {children}
           <div
             className={cn(
@@ -146,29 +135,8 @@ export function ChatMessageBubble({
             {mine && !deleted ? <ReadReceipt read={Boolean(read)} /> : null}
           </div>
         </div>
-        {showActions ? (
-          <DropdownMenuContent align={mine ? "end" : "start"} className="w-40">
-            {onReply ? (
-              <DropdownMenuItem onClick={onReply}>
-                <Reply />
-                Reply
-              </DropdownMenuItem>
-            ) : null}
-            {mine && canEdit && onEdit ? (
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-            ) : null}
-            {mine && onDelete ? (
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        ) : null}
-      </DropdownMenu>
+        {footer}
+      </div>
     </motion.div>
   )
 }

@@ -1,13 +1,14 @@
-import { ArrowLeft, ImageIcon, Paperclip, Pencil, Send, X } from "lucide-react"
+import { ArrowLeft, ImageIcon, Paperclip, Pencil, Reply, Send, Trash2, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useMemo, useRef, useState } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { Link, useNavigate, useParams } from "react-router"
 
 import { useAuth } from "@/auth/auth-provider"
+import { ActionSheet } from "@/components/action-sheet"
 import { ChatMessageBubble, ReplyQuote } from "@/components/chat-message-bubble"
 import { ConversationAvatar } from "@/components/conversation-avatar"
-import { EmojiButton } from "@/components/emoji-picker-panel"
+import { EmojiButton, EmojiPickerPanel } from "@/components/emoji-picker-panel"
 import { EmptyLottie } from "@/components/empty-lottie"
 import { GroupInfoDialog } from "@/components/group-info-dialog"
 import { InviteActions } from "@/components/invite-actions"
@@ -18,6 +19,14 @@ import { SendBurst } from "@/components/send-burst"
 import { TypingDots } from "@/components/typing-dots"
 import { VoiceRecorderButton } from "@/components/voice-recorder-button"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { inviteUrl, isMessageReadByOthers, useConversations } from "@/hooks/use-conversations"
 import { useMessages, type ChatMessage } from "@/hooks/use-messages"
 import { usePresence, useTyping } from "@/hooks/use-presence"
@@ -38,8 +47,17 @@ export function ChatPage() {
       conversation.members
         .filter((member) => member.id !== user?.id)
         .every((member) => member.membershipStatus === "joined"))
-  const { data: messages = [], send, sendFile, sendImage, sendVoice, edit, remove, isLoading } =
-    useMessages(conversationId, Boolean(canChat))
+  const {
+    data: messages = [],
+    send,
+    sendFile,
+    sendImage,
+    sendVoice,
+    edit,
+    remove,
+    hide,
+    isLoading,
+  } = useMessages(conversationId, Boolean(canChat))
   const { reactions, toggleReaction, userId } = useReactions(
     conversationId,
     Boolean(canChat),
@@ -53,6 +71,10 @@ export function ChatPage() {
   const [burstId, setBurstId] = useState(0)
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
   const [editing, setEditing] = useState<ChatMessage | null>(null)
+  const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null)
+  const [confirmEveryone, setConfirmEveryone] = useState<ChatMessage | null>(null)
+  const [reactionFor, setReactionFor] = useState<string | null>(null)
+  const [composerEmojiOpen, setComposerEmojiOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLInputElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
@@ -111,6 +133,7 @@ export function ChatPage() {
   function startReply(message: ChatMessage) {
     setEditing(null)
     setReplyTo(message)
+    setActionsFor(null)
     textRef.current?.focus()
   }
 
@@ -119,6 +142,7 @@ export function ChatPage() {
     setReplyTo(null)
     setEditing(message)
     setDraft(message.payload.text)
+    setActionsFor(null)
     textRef.current?.focus()
   }
 
@@ -134,6 +158,11 @@ export function ChatPage() {
       listRef.current?.scrollToIndex({ index, align: "center", behavior: "smooth" })
     }
   }
+
+  const emojiSheetOpen = composerEmojiOpen || Boolean(reactionFor)
+  const actionsMessage = actionsFor
+  const actionsMine = actionsMessage?.sender_id === user?.id
+  const actionsDeleted = Boolean(actionsMessage?.deleted_at)
 
   if (!conversationId) return null
   if (!conversation) {
@@ -205,6 +234,11 @@ export function ChatPage() {
             className="h-full"
             data={messages}
             followOutput="smooth"
+            increaseViewportBy={{ top: 120, bottom: 120 }}
+            components={{
+              Header: () => <div className="h-2" />,
+              Footer: () => <div className="h-3" />,
+            }}
             itemContent={(_index, message) => {
               const mine = message.sender_id === user?.id
               const sender = conversation.members.find((member) => member.id === message.sender_id)
@@ -227,12 +261,18 @@ export function ChatPage() {
                     conversation.members,
                     user?.id,
                   )}
-                  canEdit={mine && message.payload?.kind === "text"}
-                  onReply={deleted ? undefined : () => startReply(message)}
-                  onEdit={
-                    mine && message.payload?.kind === "text" ? () => startEdit(message) : undefined
+                  onOpenActions={() => setActionsFor(message)}
+                  footer={
+                    deleted ? null : (
+                      <MessageReactions
+                        messageId={message.id}
+                        reactions={reactions}
+                        userId={userId}
+                        onToggle={(id, emoji) => void toggleReaction(id, emoji)}
+                        onAdd={() => setReactionFor(message.id)}
+                      />
+                    )
                   }
-                  onDelete={mine && !deleted ? () => void remove.mutateAsync(message.id) : undefined}
                 >
                   {quoted ? (
                     <ReplyQuote
@@ -251,14 +291,6 @@ export function ChatPage() {
                     />
                   ) : null}
                   <MessageBody payload={message.payload} error={message.error} />
-                  {!deleted ? (
-                    <MessageReactions
-                      messageId={message.id}
-                      reactions={reactions}
-                      userId={userId}
-                      onToggle={(id, emoji) => void toggleReaction(id, emoji)}
-                    />
-                  ) : null}
                 </ChatMessageBubble>
               )
             }}
@@ -313,6 +345,7 @@ export function ChatPage() {
               type="button"
               variant="ghost"
               size="icon-sm"
+              className="size-11 md:size-7"
               aria-label="Cancel edit"
               onClick={() => {
                 setEditing(null)
@@ -336,7 +369,7 @@ export function ChatPage() {
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="mt-1"
+              className="mt-1 size-11 md:size-7"
               aria-label="Cancel reply"
               onClick={() => setReplyTo(null)}
             >
@@ -409,11 +442,12 @@ export function ChatPage() {
           />
           {!editing ? (
             <div className="flex items-center gap-1 md:contents">
-              <EmojiButton label="Insert emoji" onPick={insertEmoji} />
+              <EmojiButton label="Insert emoji" onOpen={() => setComposerEmojiOpen(true)} />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="size-11 md:size-8"
                 aria-label="Send image"
                 onClick={() => imageRef.current?.click()}
               >
@@ -423,6 +457,7 @@ export function ChatPage() {
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="size-11 md:size-8"
                 aria-label="Attach file"
                 onClick={() => fileRef.current?.click()}
               >
@@ -431,7 +466,7 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="flex items-center gap-1 md:contents">
-              <EmojiButton label="Insert emoji" onPick={insertEmoji} />
+              <EmojiButton label="Insert emoji" onOpen={() => setComposerEmojiOpen(true)} />
             </div>
           )}
           <div className="flex min-w-0 flex-1 items-end gap-2">
@@ -441,7 +476,7 @@ export function ChatPage() {
             rows={1}
             aria-label={editing ? "Edit message" : "Message"}
             placeholder={editing ? "Edit your message" : "Write a message"}
-            className="max-h-32 min-h-9 min-w-0 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-base outline-none md:min-h-9 md:text-sm focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => {
               setDraft(event.target.value)
               if (!editing) broadcastTyping()
@@ -468,7 +503,7 @@ export function ChatPage() {
               <Button
                 type="submit"
                 size="icon"
-                className="accent-glow"
+                className="accent-glow size-11 md:size-8"
                 aria-label={editing ? "Save edit" : "Send"}
                 disabled={send.isPending || edit.isPending}
               >
@@ -500,6 +535,125 @@ export function ChatPage() {
           </>
         )}
       </div>
+      <ActionSheet
+        open={Boolean(actionsMessage)}
+        onOpenChange={(open) => {
+          if (!open) setActionsFor(null)
+        }}
+        title="Message"
+      >
+        <div className="grid gap-1">
+          {!actionsDeleted ? (
+            <Button
+              variant="ghost"
+              className="h-11 justify-start"
+              onClick={() => {
+                if (actionsMessage) startReply(actionsMessage)
+              }}
+            >
+              <Reply />
+              Reply
+            </Button>
+          ) : null}
+          {actionsMine && !actionsDeleted && actionsMessage?.payload?.kind === "text" ? (
+            <Button
+              variant="ghost"
+              className="h-11 justify-start"
+              onClick={() => {
+                if (actionsMessage) startEdit(actionsMessage)
+              }}
+            >
+              <Pencil />
+              Edit
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            className="h-11 justify-start text-destructive hover:text-destructive"
+            onClick={() => {
+              if (!actionsMessage) return
+              const id = actionsMessage.id
+              setActionsFor(null)
+              void hide.mutateAsync(id).catch((err) => {
+                setComposerError(err instanceof Error ? err.message : "Could not delete")
+              })
+            }}
+          >
+            <Trash2 />
+            Delete for me
+          </Button>
+          {actionsMine && !actionsDeleted ? (
+            <Button
+              variant="ghost"
+              className="h-11 justify-start text-destructive hover:text-destructive"
+              onClick={() => {
+                setConfirmEveryone(actionsMessage)
+                setActionsFor(null)
+              }}
+            >
+              <Trash2 />
+              Delete for everyone
+            </Button>
+          ) : null}
+        </div>
+      </ActionSheet>
+      <ActionSheet
+        open={emojiSheetOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setComposerEmojiOpen(false)
+            setReactionFor(null)
+          }
+        }}
+        title={reactionFor ? "React" : "Emoji"}
+        className="p-2 sm:max-w-sm"
+      >
+        <EmojiPickerPanel
+          className="border-0 shadow-none"
+          onPick={(emoji) => {
+            if (reactionFor) {
+              void toggleReaction(reactionFor, emoji)
+              setReactionFor(null)
+              return
+            }
+            insertEmoji(emoji)
+            setComposerEmojiOpen(false)
+          }}
+        />
+      </ActionSheet>
+      <Dialog
+        open={Boolean(confirmEveryone)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmEveryone(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete for everyone?</DialogTitle>
+            <DialogDescription>
+              This message will be removed for all people in this chat.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmEveryone(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!confirmEveryone) return
+                const id = confirmEveryone.id
+                setConfirmEveryone(null)
+                void remove.mutateAsync(id).catch((err) => {
+                  setComposerError(err instanceof Error ? err.message : "Could not delete")
+                })
+              }}
+            >
+              Delete for everyone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <MotionToast message={copied ? "Invite link copied" : null} onClear={() => setCopied(false)} />
     </div>
   )

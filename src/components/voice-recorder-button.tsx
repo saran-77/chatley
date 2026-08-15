@@ -126,6 +126,7 @@ export function VoiceRecorderButton({
           type="button"
           variant="ghost"
           size="icon"
+          className="size-11 md:size-8"
           aria-label="Cancel recording"
           onClick={() => void stopRecording(false)}
         >
@@ -134,6 +135,7 @@ export function VoiceRecorderButton({
         <Button
           type="button"
           size="icon"
+          className="size-11 md:size-8"
           aria-label="Stop and send"
           onClick={() => void stopRecording(true)}
         >
@@ -148,6 +150,7 @@ export function VoiceRecorderButton({
       type="button"
       variant="ghost"
       size="icon"
+      className="size-11 md:size-8"
       aria-label="Record voice note"
       disabled={disabled}
       onClick={() => void startRecording()}

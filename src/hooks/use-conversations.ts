@@ -66,13 +66,18 @@ export function useConversations() {
     queryKey: ["conversations", user?.id],
     enabled: Boolean(user?.id),
     queryFn: async (): Promise<ConversationItem[]> => {
-      const { data, error } = await supabase
-        .from("conversations")
-        .select(
-          "id, type, name, avatar_path, invite_token, created_at, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, sender_id, sent_at, deleted_at)",
-        )
-        .order("created_at", { ascending: false })
+      const [{ data, error }, { data: hides, error: hideError }] = await Promise.all([
+        supabase
+          .from("conversations")
+          .select(
+            "id, type, name, avatar_path, invite_token, created_at, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, sender_id, sent_at, deleted_at)",
+          )
+          .order("created_at", { ascending: false }),
+        supabase.from("message_hides").select("message_id").eq("user_id", user!.id),
+      ])
       if (error) throw error
+      if (hideError) throw hideError
+      const hiddenIds = new Set((hides ?? []).map((row) => row.message_id))
 
       const items = (data ?? []).map((row) => {
         const members = (row.conversation_members ?? [])
@@ -95,6 +100,7 @@ export function useConversations() {
           myStatus === "joined"
             ? (row.messages ?? [])
                 .slice()
+                .filter((message) => !hiddenIds.has(message.id))
                 .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
                 .at(-1) ?? null
             : null
@@ -165,6 +171,11 @@ export function useConversations() {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles" },
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "message_hides" },
         invalidate,
       )
       .subscribe()

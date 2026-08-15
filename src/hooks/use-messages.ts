@@ -65,18 +65,31 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
     queryKey,
     enabled: Boolean(conversationId && user?.id && enabled),
     queryFn: async (): Promise<ChatMessage[]> => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId!)
-        .order("sent_at", { ascending: true })
+      const [{ data, error }, { data: hides, error: hideError }] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("*")
+          .eq("conversation_id", conversationId!)
+          .order("sent_at", { ascending: true }),
+        supabase
+          .from("message_hides")
+          .select("message_id")
+          .eq("user_id", user!.id),
+      ])
       if (error) throw error
-      return (data ?? []).map(toChatMessage)
+      if (hideError) throw hideError
+      const hidden = new Set((hides ?? []).map((row) => row.message_id))
+      return (data ?? [])
+        .filter((message) => !hidden.has(message.id))
+        .map(toChatMessage)
     },
   })
 
   useEffect(() => {
     if (!conversationId || !user?.id || !enabled) return
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ queryKey })
+    }
     const channel = supabase
       .channel(`messages:${conversationId}:${crypto.randomUUID()}`)
       .on(
@@ -87,9 +100,17 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => {
-          void queryClient.invalidateQueries({ queryKey })
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "message_hides",
+          filter: `user_id=eq.${user.id}`,
         },
+        invalidate,
       )
       .subscribe()
     return () => {
@@ -190,5 +211,17 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
     onSuccess: invalidate,
   })
 
-  return { ...query, send, sendFile, sendImage, sendVoice, edit, remove }
+  const hide = useMutation({
+    mutationFn: async (messageId: string) => {
+      if (!user?.id) throw new Error("No active conversation")
+      const { error } = await supabase.from("message_hides").insert({
+        message_id: messageId,
+        user_id: user.id,
+      })
+      if (error) throw error
+    },
+    onSuccess: invalidate,
+  })
+
+  return { ...query, send, sendFile, sendImage, sendVoice, edit, remove, hide }
 }
