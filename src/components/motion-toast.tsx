@@ -20,7 +20,7 @@ export function MotionToast({
       {message ? (
         <motion.div
           role="status"
-          className="glass-toast pointer-events-none fixed right-4 bottom-4 z-50 max-w-sm rounded-2xl px-4 py-3 text-sm shadow-[0_12px_40px_-12px_color-mix(in_oklch,var(--primary),transparent_45%)]"
+          className="glass-toast pointer-events-none fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 max-w-[min(24rem,calc(100vw-2rem))] rounded-2xl px-4 py-3 text-sm shadow-[0_12px_40px_-12px_color-mix(in_oklch,var(--primary),transparent_45%)]"
           initial={reduced ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}

@@ -27,7 +27,7 @@ export function InvitePage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-svh items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
         Loading invite…
       </div>
     )
@@ -35,7 +35,7 @@ export function InvitePage() {
 
   if (!data) {
     return (
-      <div className="flex h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="text-sm text-muted-foreground">This invite link is invalid or expired.</p>
         <Button variant="outline" onClick={() => navigate("/")}>
           Back to chats
@@ -47,7 +47,7 @@ export function InvitePage() {
   const title = data.name ?? (data.type === "group" ? "Group chat" : "Chat")
 
   return (
-    <div className="mx-auto flex h-svh max-w-sm flex-col items-center justify-center gap-4 p-6 text-center">
+    <div className="mx-auto flex h-dvh max-w-sm flex-col items-center justify-center gap-4 p-6 text-center">
       <ConversationAvatar size="lg" title={title} avatarPath={data.avatar_path} />
       <div>
         <h1 className="text-lg font-medium">Join {title}</h1>

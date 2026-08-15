@@ -51,7 +51,7 @@ export function AppLayout() {
   const [query, setQuery] = useState("")
   const navigate = useNavigate()
   const location = useLocation()
-  const inChat = location.pathname.startsWith("/c/")
+  const onList = location.pathname === "/"
   const reduced = useReducedMotion()
   const didStagger = useRef(false)
 
@@ -64,16 +64,16 @@ export function AppLayout() {
   }, [filtered.length])
 
   return (
-    <div className="flex min-h-svh bg-transparent">
+    <div className="flex min-h-dvh bg-transparent">
       <aside
         className={cn(
-          "glass-panel flex w-full max-w-[320px] flex-col border-r shadow-[0_20px_50px_-28px_color-mix(in_oklch,var(--primary),transparent_62%)]",
-          inChat ? "max-md:hidden" : "max-md:max-w-none",
+          "glass-panel flex min-h-dvh w-full max-w-[320px] flex-col border-r shadow-[0_20px_50px_-28px_color-mix(in_oklch,var(--primary),transparent_62%)]",
+          onList ? "max-md:max-w-none" : "max-md:hidden",
         )}
       >
-        <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <div className="flex items-center justify-between gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
           <div className="flex items-center gap-2">
-            <span className="accent-glow flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.5_0.2_350)_32%)] text-primary-foreground">
+            <span className="accent-glow flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.48_0.08_145)_32%)] text-primary-foreground">
               <MessageCircle className="size-4" />
             </span>
             <div>
@@ -136,7 +136,7 @@ export function AppLayout() {
                         cn(
                           "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-sm",
                           isActive &&
-                            "accent-glow bg-gradient-to-br from-primary/18 to-[color-mix(in_oklch,oklch(0.7_0.12_350),transparent_88%)]",
+                            "accent-glow bg-gradient-to-br from-primary/18 to-[color-mix(in_oklch,oklch(0.7_0.08_145),transparent_88%)]",
                         )
                       }
                     >
@@ -215,7 +215,7 @@ export function AppLayout() {
             </LayoutGroup>
           )}
         </nav>
-        <div className="flex items-center justify-between gap-2 border-t px-3 py-3">
+        <div className="flex items-center justify-between gap-2 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Link to="/settings" className="flex min-w-0 items-center gap-2">
             <ConversationAvatar
               size="sm"
@@ -241,7 +241,7 @@ export function AppLayout() {
           </div>
         </div>
       </aside>
-      <main className={cn("min-w-0 flex-1", !inChat && "max-md:hidden")}>
+      <main className={cn("min-w-0 flex-1", onList && "max-md:hidden")}>
         <Outlet />
       </main>
     </div>

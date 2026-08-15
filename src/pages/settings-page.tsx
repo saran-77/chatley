@@ -1,5 +1,6 @@
+import { ArrowLeft } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router"
+import { Link, useNavigate } from "react-router"
 import { motion, useReducedMotion } from "framer-motion"
 
 import { useAuth } from "@/auth/auth-provider"
@@ -37,12 +38,19 @@ export function SettingsPage() {
   }, [profile])
 
   return (
-    <motion.div className="mx-auto flex h-svh max-w-lg flex-col gap-6 overflow-y-auto p-6" {...enter}>
-      <div>
-        <h1 className="text-xl font-medium">Profile</h1>
-        <p className="text-sm text-muted-foreground">
-          Update how you appear to people in your chats.
-        </p>
+    <motion.div className="mx-auto flex h-dvh max-w-lg flex-col gap-6 overflow-y-auto p-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]" {...enter}>
+      <div className="flex items-start gap-2">
+        <Button variant="ghost" size="icon-sm" className="mt-0.5 md:hidden" asChild>
+          <Link to="/" aria-label="Back to chats">
+            <ArrowLeft />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-xl font-medium">Profile</h1>
+          <p className="text-sm text-muted-foreground">
+            Update how you appear to people in your chats.
+          </p>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <Avatar size="lg">

@@ -1,7 +1,7 @@
-import { Check, ImagePlus } from "lucide-react"
+import { ArrowLeft, Check, ImagePlus } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router"
+import { Link, useNavigate } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 
 import { useAuth } from "@/auth/auth-provider"
@@ -52,14 +52,21 @@ export function NewChatPage() {
 
   return (
     <motion.div
-      className="mx-auto flex h-svh max-w-lg flex-col gap-4 p-6"
+      className="mx-auto flex h-dvh max-w-lg flex-col gap-4 p-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
       {...enter}
     >
-      <div>
-        <h1 className="text-xl font-medium">New chat</h1>
-        <p className="text-sm text-muted-foreground">
-          Pick one person for a DM, or several to start a group.
-        </p>
+      <div className="flex items-start gap-2">
+        <Button variant="ghost" size="icon-sm" className="mt-0.5 md:hidden" asChild>
+          <Link to="/" aria-label="Back to chats">
+            <ArrowLeft />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-xl font-medium">New chat</h1>
+          <p className="text-sm text-muted-foreground">
+            Pick one person for a DM, or several to start a group.
+          </p>
+        </div>
       </div>
       <Input
         value={query}
@@ -152,7 +159,7 @@ export function NewChatPage() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.4 }}
                           transition={reduced ? { duration: 0.12 } : springPop}
-                          className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.5_0.2_350)_32%)] text-primary-foreground"
+                          className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.48_0.08_145)_32%)] text-primary-foreground"
                         >
                           <Check className="size-3.5" />
                         </motion.span>

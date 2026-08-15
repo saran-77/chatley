@@ -35,7 +35,7 @@ export function LoginPage() {
     : { initial: { opacity: 0, y: 12, scale: 0.96 }, animate: { opacity: 1, y: 0, scale: 1 } }
 
   return (
-    <div className="relative flex min-h-svh items-center justify-center overflow-hidden px-4">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <motion.div
         aria-hidden="true"
         className="pointer-events-none absolute top-[18%] left-[12%] size-24 rounded-full bg-primary/25 blur-2xl"
@@ -44,7 +44,7 @@ export function LoginPage() {
       />
       <motion.div
         aria-hidden="true"
-        className="pointer-events-none absolute right-[14%] bottom-[22%] size-32 rounded-3xl bg-[color-mix(in_oklch,oklch(0.7_0.12_350),transparent_55%)] blur-2xl"
+        className="pointer-events-none absolute right-[14%] bottom-[22%] size-32 rounded-3xl bg-[color-mix(in_oklch,oklch(0.7_0.08_145),transparent_55%)] blur-2xl"
         animate={reduced ? undefined : { y: [0, 16, 0], rotate: [8, 16, 8] }}
         transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -54,7 +54,7 @@ export function LoginPage() {
             <CardHeader className="space-y-3 text-center">
               <motion.div
                 variants={item}
-                className="accent-glow mx-auto flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.5_0.18_350)_30%)] text-primary-foreground"
+                className="accent-glow mx-auto flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.48_0.08_145)_30%)] text-primary-foreground"
                 transition={reduced ? { duration: 0.16 } : springPop}
               >
                 <MessageCircle className="size-5" aria-hidden="true" />

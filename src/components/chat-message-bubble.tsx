@@ -39,9 +39,9 @@ export function ChatMessageBubble({
     >
       <div
         className={cn(
-          "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
+          "max-w-[min(75%,28rem)] rounded-2xl px-3 py-2 text-sm",
           mine
-            ? "bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.5_0.2_350)_28%)] text-primary-foreground shadow-[0_10px_24px_-12px_color-mix(in_oklch,var(--primary),transparent_30%)]"
+            ? "bg-gradient-to-br from-primary to-[color-mix(in_oklch,var(--primary),oklch(0.48_0.08_145)_28%)] text-primary-foreground shadow-[0_10px_24px_-12px_color-mix(in_oklch,var(--primary),transparent_30%)]"
             : "glass-panel text-foreground shadow-[0_8px_20px_-14px_color-mix(in_oklch,var(--primary),transparent_55%)]",
         )}
       >

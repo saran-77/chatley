@@ -103,8 +103,8 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-svh flex-col">
-      <header className="glass-panel flex items-center gap-3 border-b px-3 py-2">
+    <div className="flex h-dvh flex-col">
+      <header className="glass-panel flex items-center gap-3 border-b px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <Button variant="ghost" size="icon-sm" className="md:hidden" asChild>
           <Link to="/" aria-label="Back to chats">
             <ArrowLeft />
@@ -190,7 +190,7 @@ export function ChatPage() {
         )}
       </div>
 
-      <div className="glass-panel border-t px-3 py-2">
+      <div className="glass-panel border-t px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {!canChat ? (
           <div className="flex flex-col items-center gap-2 py-2 text-center">
             <p className="text-sm text-muted-foreground">
@@ -228,7 +228,7 @@ export function ChatPage() {
           <p className="mb-1 text-xs text-destructive">{composerError}</p>
         ) : null}
         <form
-          className="flex items-end gap-2"
+          className="flex flex-col gap-2 md:flex-row md:items-end"
           onSubmit={(event) => {
             event.preventDefault()
             const text = draft.trim()
@@ -267,6 +267,7 @@ export function ChatPage() {
               })
             }}
           />
+          <div className="flex items-center gap-1 md:contents">
           <EmojiButton label="Insert emoji" onPick={insertEmoji} />
           <Button
             type="button"
@@ -286,13 +287,15 @@ export function ChatPage() {
           >
             <Paperclip />
           </Button>
+          </div>
+          <div className="flex min-w-0 flex-1 items-end gap-2">
           <textarea
             ref={textRef}
             value={draft}
             rows={1}
             aria-label="Message"
             placeholder="Write a message"
-            className="max-h-32 min-h-9 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="max-h-32 min-h-9 min-w-0 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => {
               setDraft(event.target.value)
               broadcastTyping()
@@ -306,7 +309,7 @@ export function ChatPage() {
           />
           {draft.trim() ? (
             <motion.div
-              className="relative"
+              className="relative shrink-0"
               whileTap={reduced ? undefined : { scale: 0.88 }}
               animate={reduced ? undefined : { scale: 1 }}
               transition={springPop}
@@ -336,6 +339,7 @@ export function ChatPage() {
               }}
             />
           )}
+          </div>
         </form>
           </>
         )}

@@ -11,12 +11,12 @@ export function AmbientBackground() {
         transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
       />
       <motion.div
-        className="mesh-blob absolute top-[30%] -right-[15%] size-[48vw] min-h-[20rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,oklch(0.7_0.14_350),transparent_60%)_0%,transparent_70%)]"
+        className="mesh-blob absolute top-[30%] -right-[15%] size-[48vw] min-h-[20rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,oklch(0.7_0.08_145),transparent_60%)_0%,transparent_70%)]"
         animate={reduced ? undefined : { x: [0, -30, 24, 0], y: [0, 36, -16, 0] }}
         transition={{ duration: 34, repeat: Infinity, ease: "linear" }}
       />
       <motion.div
-        className="mesh-blob absolute -bottom-[25%] left-[20%] size-[44vw] min-h-[18rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,oklch(0.72_0.1_200),transparent_62%)_0%,transparent_72%)]"
+        className="mesh-blob absolute -bottom-[25%] left-[20%] size-[44vw] min-h-[18rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,oklch(0.72_0.08_165),transparent_62%)_0%,transparent_72%)]"
         animate={reduced ? undefined : { x: [0, 18, -28, 0], y: [0, -22, 14, 0] }}
         transition={{ duration: 32, repeat: Infinity, ease: "linear" }}
       />
