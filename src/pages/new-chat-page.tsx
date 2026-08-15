@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 
 import { useAuth } from "@/auth/auth-provider"
+import { useIdentity } from "@/auth/identity-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,7 @@ import { supabase } from "@/lib/supabase"
 
 export function NewChatPage() {
   const { user } = useAuth()
+  const { secretKey } = useIdentity()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const photoRef = useRef<HTMLInputElement>(null)
@@ -178,22 +180,24 @@ export function NewChatPage() {
         className="accent-glow"
         disabled={
           !user ||
+          !secretKey ||
           selected.length === 0 ||
           pending ||
           (isGroup && !groupName.trim())
         }
         onClick={async () => {
-          if (!user) return
+          if (!user || !secretKey) return
           try {
             setPending(true)
             setError(null)
             const id =
               selected.length === 1
-                ? await createDirectMessage(user.id, selected[0])
+                ? await createDirectMessage(user.id, selected[0], secretKey)
                 : await createGroupChat(
                     user.id,
                     groupName.trim(),
                     selected,
+                    secretKey,
                     groupPhoto ?? undefined,
                   )
             navigate(`/c/${id}`)

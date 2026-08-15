@@ -1,3 +1,4 @@
+import { useIdentity } from "@/auth/identity-provider"
 import { Button } from "@/components/ui/button"
 import { acceptInvite, declineInvite } from "@/hooks/use-conversations"
 import { useQueryClient } from "@tanstack/react-query"
@@ -12,12 +13,15 @@ export function InviteActions({
   onDeclined?: () => void
 }) {
   const queryClient = useQueryClient()
+  const { secretKey } = useIdentity()
   return (
     <div className="flex gap-2">
       <Button
         size="sm"
+        disabled={!secretKey}
         onClick={() => {
-          void acceptInvite(conversationId, userId).then(() =>
+          if (!secretKey) return
+          void acceptInvite(conversationId, userId, secretKey).then(() =>
             queryClient.invalidateQueries({ queryKey: ["conversations", userId] }),
           )
         }}

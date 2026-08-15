@@ -8,6 +8,8 @@ import {
 } from "react"
 import type { Session, User } from "@supabase/supabase-js"
 
+import { clearConversationKeyCache } from "@/lib/envelope"
+import { clearIdentitySecret } from "@/lib/identity-store"
 import { supabase } from "@/lib/supabase"
 import type { Tables } from "@/lib/database.types"
 
@@ -91,6 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error?.message }
       },
       signOut: async () => {
+        const userId = session?.user.id
+        if (userId) await clearIdentitySecret(userId)
+        clearConversationKeyCache()
         await supabase.auth.signOut()
       },
       refreshProfile: async () => {
@@ -98,8 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(await fetchProfile(session.user.id))
       },
       deleteAccount: async () => {
+        const userId = session?.user.id
         const { error } = await supabase.functions.invoke("delete-account")
         if (error) return { error: error.message }
+        if (userId) await clearIdentitySecret(userId)
+        clearConversationKeyCache()
         try {
           await supabase.auth.signOut()
         } catch {

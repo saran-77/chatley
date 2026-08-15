@@ -311,6 +311,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      install_conversation_epoch: {
+        Args: {
+          _conversation_id: string
+          _epoch: number
+          _wraps: Json
+        }
+        Returns: number
+      }
       join_by_invite_token: {
         Args: { _token: string }
         Returns: string

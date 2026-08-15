@@ -32,6 +32,7 @@ import { inviteUrl, isMessageReadByOthers, useConversations } from "@/hooks/use-
 import { useMessages, type ChatMessage } from "@/hooks/use-messages"
 import { usePresence, useTyping } from "@/hooks/use-presence"
 import { useReactions } from "@/hooks/use-reactions"
+import { useVisualViewportHeight } from "@/hooks/use-visual-viewport"
 import { springPop } from "@/lib/motion"
 import { formatLastSeen } from "@/lib/time"
 
@@ -48,6 +49,11 @@ export function ChatPage() {
       conversation.members
         .filter((member) => member.id !== user?.id)
         .every((member) => member.membershipStatus === "joined"))
+  const encryptionReady =
+    Boolean(canChat) &&
+    (conversation?.members ?? [])
+      .filter((member) => member.membershipStatus === "joined")
+      .every((member) => Boolean(member.identity_pub_key))
   const {
     data: messages = [],
     send,
@@ -58,6 +64,8 @@ export function ChatPage() {
     remove,
     hide,
     isLoading,
+    isError,
+    error,
   } = useMessages(conversationId, Boolean(canChat))
   const { reactions, toggleReaction, userId } = useReactions(
     conversationId,
@@ -84,6 +92,7 @@ export function ChatPage() {
   const imageRef = useRef<HTMLInputElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<VirtuosoHandle>(null)
+  const viewportHeight = useVisualViewportHeight()
 
   const other = conversation?.members.find((member) => member.id !== user?.id)
   const joinedCount =
@@ -157,6 +166,10 @@ export function ChatPage() {
     setEditing(null)
   }
 
+  function keepComposerFocus() {
+    window.requestAnimationFrame(() => textRef.current?.focus())
+  }
+
   function scrollToMessage(id: string) {
     const index = messages.findIndex((message) => message.id === id)
     if (index >= 0) {
@@ -179,7 +192,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex flex-col overflow-hidden" style={{ height: viewportHeight }}>
       <header className="glass-panel flex items-center gap-3 border-b px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <Button variant="ghost" size="icon-sm" className="md:hidden" asChild>
           <Link to="/" aria-label="Back to chats">
@@ -228,6 +241,10 @@ export function ChatPage() {
           </div>
         ) : isLoading ? (
           <div className="p-6 text-sm text-muted-foreground">Loading messages…</div>
+        ) : isError ? (
+          <div className="p-6 text-sm text-destructive">
+            {error instanceof Error ? error.message : "Could not load messages"}
+          </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
             <EmptyLottie label="No messages yet" />
@@ -295,7 +312,11 @@ export function ChatPage() {
                       error="Original message"
                     />
                   ) : null}
-                  <MessageBody payload={message.payload} error={message.error} />
+                  <MessageBody
+                    payload={message.payload}
+                    error={message.error}
+                    mediaKey={message.mediaKey}
+                  />
                 </ChatMessageBubble>
               )
             }}
@@ -322,11 +343,15 @@ export function ChatPage() {
               {copied ? "Link copied" : "Copy invite link"}
             </Button>
           </div>
+        ) : !encryptionReady ? (
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            Waiting for everyone here to set up encryption.
+          </p>
         ) : (
           <>
         <AnimatePresence>
           {typingLabel ? (
-            <motion.p
+            <motion.div
               initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
@@ -334,7 +359,7 @@ export function ChatPage() {
             >
               <TypingDots />
               {typingLabel}
-            </motion.p>
+            </motion.div>
           ) : null}
         </AnimatePresence>
         {composerError ? (
@@ -395,6 +420,7 @@ export function ChatPage() {
               })
               setEditing(null)
               setDraft("")
+              keepComposerFocus()
               return
             }
             setBurstId((current) => current + 1)
@@ -408,6 +434,7 @@ export function ChatPage() {
               })
             setDraft("")
             setReplyTo(null)
+            keepComposerFocus()
           }}
         >
           <input
@@ -481,6 +508,7 @@ export function ChatPage() {
             rows={1}
             aria-label={editing ? "Edit message" : "Message"}
             placeholder={editing ? "Edit your message" : "Write a message"}
+            enterKeyHint="send"
             className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border bg-transparent px-3 py-2 text-base outline-none md:min-h-9 md:text-sm focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => {
               setDraft(event.target.value)
@@ -511,6 +539,7 @@ export function ChatPage() {
                 className="accent-glow size-11 md:size-8"
                 aria-label={editing ? "Save edit" : "Send"}
                 disabled={send.isPending || edit.isPending}
+                onPointerDown={(event) => event.preventDefault()}
               >
                 {editing ? <Pencil /> : <Send />}
               </Button>

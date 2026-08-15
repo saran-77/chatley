@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router"
 
 import { useAuth } from "@/auth/auth-provider"
+import { useIdentity } from "@/auth/identity-provider"
 import { ConversationAvatar } from "@/components/conversation-avatar"
 import { MotionToast } from "@/components/motion-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -38,6 +39,7 @@ export function GroupInfoDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { user } = useAuth()
+  const { secretKey } = useIdentity()
   const reduced = useReducedMotion()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -244,12 +246,12 @@ export function GroupInfoDialog({
         <DialogFooter>
           <Button
             variant="destructive"
-            disabled={busy || !user}
+            disabled={busy || !user || !secretKey}
             onClick={async () => {
-              if (!user) return
+              if (!user || !secretKey) return
               try {
                 setBusy(true)
-                await leaveGroup(conversation.id, user.id)
+                await leaveGroup(conversation.id, user.id, secretKey)
                 await refresh()
                 onOpenChange(false)
                 navigate("/")

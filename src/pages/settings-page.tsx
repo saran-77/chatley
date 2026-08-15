@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router"
 import { motion, useReducedMotion } from "framer-motion"
 
 import { useAuth } from "@/auth/auth-provider"
+import { useIdentity } from "@/auth/identity-provider"
 import { CollapsibleSection } from "@/components/collapsible-section"
 import { MotionToast } from "@/components/motion-toast"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -25,6 +26,7 @@ import { useQueryClient } from "@tanstack/react-query"
 
 export function SettingsPage() {
   const { profile, refreshProfile, deleteAccount } = useAuth()
+  const { changePassphrase } = useIdentity()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
@@ -34,6 +36,10 @@ export function SettingsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [currentPass, setCurrentPass] = useState("")
+  const [nextPass, setNextPass] = useState("")
+  const [nextPassConfirm, setNextPassConfirm] = useState("")
+  const [changingPass, setChangingPass] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
   const enter = fadeSlide(reduced, 0, 10)
 
@@ -136,6 +142,71 @@ export function SettingsPage() {
           <span className="text-sm text-muted-foreground">Light or dark appearance</span>
           <ThemeToggle />
         </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Encryption">
+        <p className="text-sm text-muted-foreground">
+          Message bodies and attachments are encrypted in your browser. Metadata such as
+          who is in a chat, read receipts, and timestamps stays visible to the server.
+          This is envelope encryption for a Google sign-in web app, not Signal-style
+          device verification.
+        </p>
+        <label className="mt-3 grid gap-1 text-sm">
+          Current passphrase
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={currentPass}
+            onChange={(event) => setCurrentPass(event.target.value)}
+          />
+        </label>
+        <label className="mt-2 grid gap-1 text-sm">
+          New passphrase
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={nextPass}
+            onChange={(event) => setNextPass(event.target.value)}
+          />
+        </label>
+        <label className="mt-2 grid gap-1 text-sm">
+          Confirm new passphrase
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={nextPassConfirm}
+            onChange={(event) => setNextPassConfirm(event.target.value)}
+          />
+        </label>
+        <Button
+          className="mt-3"
+          variant="outline"
+          disabled={changingPass}
+          onClick={async () => {
+            if (nextPass.length < 8) {
+              setMessage("New passphrase must be at least 8 characters")
+              return
+            }
+            if (nextPass !== nextPassConfirm) {
+              setMessage("New passphrases do not match")
+              return
+            }
+            setChangingPass(true)
+            try {
+              await changePassphrase(currentPass, nextPass)
+              setCurrentPass("")
+              setNextPass("")
+              setNextPassConfirm("")
+              setMessage("Passphrase updated")
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "Could not update passphrase")
+            } finally {
+              setChangingPass(false)
+            }
+          }}
+        >
+          {changingPass ? "Updating…" : "Change passphrase"}
+        </Button>
       </CollapsibleSection>
 
       <CollapsibleSection

@@ -2,6 +2,15 @@ import { useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { useAuth } from "@/auth/auth-provider"
+import { useIdentity } from "@/auth/identity-provider"
+import { CryptoError } from "@/lib/crypto"
+import {
+  conversationKeyLookup,
+  decryptPayload,
+  ensureConversationKey,
+  loadMyConversationKeys,
+  rotateConversationEpoch,
+} from "@/lib/envelope"
 import { uploadGroupAvatar } from "@/lib/media"
 import { parsePayload, previewText } from "@/lib/payload"
 import { supabase } from "@/lib/supabase"
@@ -16,7 +25,7 @@ export type ChatMember = Tables<"profiles"> & {
 
 type LastMessage = Pick<
   Tables<"messages">,
-  "id" | "conversation_id" | "body" | "nonce" | "sender_id" | "sent_at" | "deleted_at"
+  "id" | "conversation_id" | "body" | "nonce" | "key_epoch" | "sender_id" | "sent_at" | "deleted_at"
 >
 
 export type ConversationItem = {
@@ -38,11 +47,21 @@ export function inviteUrl(token: string) {
   return `${window.location.origin}/invite/${token}`
 }
 
-function previewLastMessage(message: LastMessage | null) {
+function previewLastMessage(
+  message: LastMessage | null,
+  key: Uint8Array | null,
+) {
   if (!message) return "No messages yet"
   if (message.deleted_at) return "This message was deleted"
-  if (message.nonce) return "Unavailable message"
-  return previewText(parsePayload(message.body))
+  if (!message.nonce) return previewText(parsePayload(message.body))
+  if (message.key_epoch == null) return "Unavailable message"
+  if (!key) return null
+  try {
+    return previewText(decryptPayload(key, message.nonce, message.body))
+  } catch (error) {
+    if (error instanceof CryptoError) return "Unavailable message"
+    return "Unavailable message"
+  }
 }
 
 export function isMessageReadByOthers(
@@ -60,20 +79,22 @@ export function isMessageReadByOthers(
 
 export function useConversations() {
   const { user } = useAuth()
+  const { secretKey } = useIdentity()
   const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: ["conversations", user?.id],
-    enabled: Boolean(user?.id),
+    enabled: Boolean(user?.id && secretKey),
     queryFn: async (): Promise<ConversationItem[]> => {
-      const [{ data, error }, { data: hides, error: hideError }] = await Promise.all([
+      const [{ data, error }, { data: hides, error: hideError }, keys] = await Promise.all([
         supabase
           .from("conversations")
           .select(
-            "id, type, name, avatar_path, invite_token, created_at, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, sender_id, sent_at, deleted_at)",
+            "id, type, name, avatar_path, invite_token, created_at, key_epoch, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, key_epoch, sender_id, sent_at, deleted_at)",
           )
           .order("created_at", { ascending: false }),
         supabase.from("message_hides").select("message_id").eq("user_id", user!.id),
+        loadMyConversationKeys(user!.id, secretKey!),
       ])
       if (error) throw error
       if (hideError) throw hideError
@@ -96,16 +117,26 @@ export function useConversations() {
         )
         const myStatus: MembershipStatus =
           myMembership?.status === "pending" ? "pending" : "joined"
-        const lastMessage =
+        const visibleMessages =
           myStatus === "joined"
             ? (row.messages ?? [])
                 .slice()
                 .filter((message) => !hiddenIds.has(message.id))
                 .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
-                .at(-1) ?? null
-            : null
+            : []
+        let lastMessage: LastMessage | null = null
+        let lastPreview = "No messages yet"
+        for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
+          const candidate = visibleMessages[i]
+          const key = conversationKeyLookup(keys, candidate.conversation_id, candidate.key_epoch)
+          const preview = previewLastMessage(candidate, key)
+          if (preview) {
+            lastMessage = candidate
+            lastPreview = preview
+            break
+          }
+        }
         const other = members.find((member) => member.id !== user?.id)
-        let lastPreview = previewLastMessage(lastMessage)
         if (myStatus === "pending") {
           lastPreview = "Invite — tap to accept"
         } else if (row.type === "dm" && other?.membershipStatus === "pending") {
@@ -178,6 +209,11 @@ export function useConversations() {
         { event: "*", schema: "public", table: "message_hides" },
         invalidate,
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversation_keys" },
+        invalidate,
+      )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
@@ -187,7 +223,11 @@ export function useConversations() {
   return query
 }
 
-export async function createDirectMessage(localUserId: string, otherUserId: string) {
+export async function createDirectMessage(
+  localUserId: string,
+  otherUserId: string,
+  identitySecret: Uint8Array,
+) {
   const { data: existing } = await supabase
     .from("conversations")
     .select("id, type, conversation_members(user_id)")
@@ -216,6 +256,7 @@ export async function createDirectMessage(localUserId: string, otherUserId: stri
     status: "pending",
   })
   if (memberError) throw memberError
+  await ensureConversationKey(conversation.id, identitySecret)
   return conversation.id
 }
 
@@ -223,6 +264,7 @@ export async function createGroupChat(
   localUserId: string,
   name: string,
   memberIds: string[],
+  identitySecret: Uint8Array,
   photo?: File,
 ) {
   const { data: conversation, error } = await supabase
@@ -258,6 +300,7 @@ export async function createGroupChat(
       .eq("id", conversation.id)
     if (avatarError) throw avatarError
   }
+  await ensureConversationKey(conversation.id, identitySecret)
   return conversation.id
 }
 
@@ -314,13 +357,22 @@ export async function addGroupMembers(conversationId: string, memberIds: string[
   if (error) throw error
 }
 
-export async function acceptInvite(conversationId: string, userId: string) {
+export async function acceptInvite(
+  conversationId: string,
+  userId: string,
+  identitySecret: Uint8Array,
+) {
   const { error } = await supabase
     .from("conversation_members")
     .update({ status: "joined" })
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
   if (error) throw error
+  try {
+    await rotateConversationEpoch(conversationId, identitySecret)
+  } catch {
+    // First send installs a key once every joined member has published a public key.
+  }
 }
 
 export async function declineInvite(conversationId: string, userId: string) {
@@ -332,7 +384,16 @@ export async function declineInvite(conversationId: string, userId: string) {
   if (error) throw error
 }
 
-export async function leaveGroup(conversationId: string, userId: string) {
+export async function leaveGroup(
+  conversationId: string,
+  userId: string,
+  identitySecret: Uint8Array,
+) {
+  try {
+    await rotateConversationEpoch(conversationId, identitySecret, { excludeUserId: userId })
+  } catch {
+    // Leave even if remaining members have not set up keys yet.
+  }
   const { error } = await supabase
     .from("conversation_members")
     .delete()
@@ -341,8 +402,13 @@ export async function leaveGroup(conversationId: string, userId: string) {
   if (error) throw error
 }
 
-export async function joinByInviteToken(token: string) {
+export async function joinByInviteToken(token: string, identitySecret: Uint8Array) {
   const { data, error } = await supabase.rpc("join_by_invite_token", { _token: token })
   if (error || !data) throw error ?? new Error("Could not join")
+  try {
+    await rotateConversationEpoch(data, identitySecret)
+  } catch {
+    // First send installs a key once every joined member has published a public key.
+  }
   return data
 }

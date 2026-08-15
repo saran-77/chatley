@@ -11,28 +11,24 @@ export type TextPayload = {
   previews?: LinkPreview[]
 }
 
-export type FilePayload = {
+type MediaMeta = {
+  path: string
+  name: string
+  mime: string
+  size: number
+  mediaNonce?: string
+}
+
+export type FilePayload = MediaMeta & {
   kind: "file"
-  path: string
-  name: string
-  mime: string
-  size: number
 }
 
-export type ImagePayload = {
+export type ImagePayload = MediaMeta & {
   kind: "image"
-  path: string
-  name: string
-  mime: string
-  size: number
 }
 
-export type VoicePayload = {
+export type VoicePayload = MediaMeta & {
   kind: "voice"
-  path: string
-  name: string
-  mime: string
-  size: number
   durationMs: number
 }
 
@@ -62,6 +58,7 @@ export function parsePayload(raw: string): Payload | null {
       size?: number
       durationMs?: number
       previews?: LinkPreview[]
+      mediaNonce?: string
     }
     if (parsed?.kind === "text" && typeof parsed.text === "string") {
       return {
@@ -78,6 +75,7 @@ export function parsePayload(raw: string): Payload | null {
       name: parsed.name,
       mime: parsed.mime || "application/octet-stream",
       size: parsed.size ?? 0,
+      mediaNonce: typeof parsed.mediaNonce === "string" ? parsed.mediaNonce : undefined,
     }
     if (parsed.kind === "image") return { kind: "image", ...base }
     if (parsed.kind === "voice") {

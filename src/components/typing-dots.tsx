@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "framer-motion"
 export function TypingDots() {
   const reduced = useReducedMotion()
   return (
-    <div className="flex items-center gap-1 px-1 py-0.5" aria-hidden="true">
+    <span className="flex items-center gap-1 px-1 py-0.5" aria-hidden="true">
       {[0, 1, 2].map((index) => (
         <motion.span
           key={index}
@@ -20,6 +20,6 @@ export function TypingDots() {
           }
         />
       ))}
-    </div>
+    </span>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useNavigate, useParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 
+import { useIdentity } from "@/auth/identity-provider"
 import { ConversationAvatar } from "@/components/conversation-avatar"
 import { Button } from "@/components/ui/button"
 import { joinByInviteToken } from "@/hooks/use-conversations"
@@ -10,6 +11,7 @@ import { supabase } from "@/lib/supabase"
 export function InvitePage() {
   const { token } = useParams()
   const navigate = useNavigate()
+  const { secretKey } = useIdentity()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -58,12 +60,12 @@ export function InvitePage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button
         className="w-full"
-        disabled={pending}
+        disabled={pending || !secretKey}
         onClick={async () => {
           if (!token) return
           try {
             setPending(true)
-            const id = await joinByInviteToken(token)
+            const id = await joinByInviteToken(token, secretKey!)
             navigate(`/c/${id}`, { replace: true })
           } catch (err) {
             setError(err instanceof Error ? err.message : "Could not join")
