@@ -1,10 +1,11 @@
-import { ArrowLeft, ImageIcon, Paperclip, Pencil, Reply, Send, Trash2, X } from "lucide-react"
+import { ArrowLeft, ImageIcon, Paperclip, Pencil, Reply, Send, Shield, ShieldAlert, ShieldCheck, Trash2, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useMemo, useRef, useState } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { Link, useNavigate, useParams } from "react-router"
 
 import { useAuth } from "@/auth/auth-provider"
+import { useIdentity } from "@/auth/identity-provider"
 import { ActionSheet } from "@/components/action-sheet"
 import { ChatMessageBubble, ReplyQuote } from "@/components/chat-message-bubble"
 import { ConversationAvatar } from "@/components/conversation-avatar"
@@ -16,10 +17,12 @@ import { MessageActionItem, MessageActionMenu } from "@/components/message-actio
 import { MessageBody } from "@/components/message-body"
 import { MessageReactions } from "@/components/message-reactions"
 import { MotionToast } from "@/components/motion-toast"
+import { SafetyNumberDialog } from "@/components/safety-number-dialog"
 import { SendBurst } from "@/components/send-burst"
 import { TypingDots } from "@/components/typing-dots"
 import { VoiceRecorderButton } from "@/components/voice-recorder-button"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { inviteUrl, isMessageReadByOthers, useConversations } from "@/hooks/use-conversations"
 import { useMessages, type ChatMessage } from "@/hooks/use-messages"
+import { usePeerVerification } from "@/hooks/use-peer-verification"
 import { usePresence, useTyping } from "@/hooks/use-presence"
 import { useReactions } from "@/hooks/use-reactions"
 import { useVisualViewportHeight } from "@/hooks/use-visual-viewport"
@@ -39,6 +43,7 @@ import { formatLastSeen } from "@/lib/time"
 export function ChatPage() {
   const { conversationId } = useParams()
   const { user } = useAuth()
+  const { publicKey } = useIdentity()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const { data: conversations = [] } = useConversations()
@@ -76,6 +81,7 @@ export function ChatPage() {
   const [draft, setDraft] = useState("")
   const [composerError, setComposerError] = useState<string | null>(null)
   const [groupOpen, setGroupOpen] = useState(false)
+  const [safetyOpen, setSafetyOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [burstId, setBurstId] = useState(0)
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
@@ -95,6 +101,12 @@ export function ChatPage() {
   const viewportHeight = useVisualViewportHeight()
 
   const other = conversation?.members.find((member) => member.id !== user?.id)
+  const verification = usePeerVerification(
+    user?.id,
+    publicKey,
+    conversation?.type === "dm" ? other?.id : undefined,
+    conversation?.type === "dm" ? other?.identity_pub_key : undefined,
+  )
   const joinedCount =
     conversation?.members.filter((member) => member.membershipStatus === "joined").length ?? 0
   const title =
@@ -216,14 +228,73 @@ export function ChatPage() {
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </button>
+        {conversation.type === "dm" ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={
+                  verification.status === "verified"
+                    ? "Verified safety number"
+                    : verification.status === "changed"
+                      ? "Safety number changed"
+                      : "Verify safety number"
+                }
+                className={
+                  verification.status === "verified"
+                    ? "text-primary"
+                    : verification.status === "changed"
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                }
+                onClick={() => setSafetyOpen(true)}
+              >
+                {verification.status === "verified" ? (
+                  <ShieldCheck />
+                ) : verification.status === "changed" ? (
+                  <ShieldAlert />
+                ) : (
+                  <Shield />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {verification.status === "verified"
+                ? "Verified"
+                : verification.status === "changed"
+                  ? "Safety number changed"
+                  : "Not verified"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </header>
+      {conversation.type === "dm" && verification.status === "changed" ? (
+        <button
+          type="button"
+          className="border-b bg-destructive/10 px-3 py-2 text-left text-xs text-destructive"
+          onClick={() => setSafetyOpen(true)}
+        >
+          Their encryption key changed. Verify the safety number.
+        </button>
+      ) : null}
       {conversation.type === "group" ? (
         <GroupInfoDialog
           conversation={conversation}
           open={groupOpen}
           onOpenChange={setGroupOpen}
         />
-      ) : null}
+      ) : (
+        <SafetyNumberDialog
+          open={safetyOpen}
+          onOpenChange={setSafetyOpen}
+          name={other?.display_name ?? "this person"}
+          status={verification.status}
+          number={verification.number}
+          onMarkVerified={verification.markVerified}
+          onClear={verification.clearVerification}
+        />
+      )}
 
       <div className="min-h-0 flex-1">
         {conversation.myStatus !== "joined" ? (

@@ -116,6 +116,41 @@ export function isBackupFormatSupported(wrappedIdentitySk: string) {
   return wrappedIdentitySk.startsWith(BACKUP_PREFIX)
 }
 
+function compareBytes(left: Uint8Array, right: Uint8Array) {
+  const length = Math.min(left.length, right.length)
+  for (let i = 0; i < length; i += 1) {
+    if (left[i] !== right[i]) return left[i] - right[i]
+  }
+  return left.length - right.length
+}
+
+function uint40(bytes: Uint8Array) {
+  let value = 0
+  for (const byte of bytes) value = value * 256 + byte
+  return value
+}
+
+export function safetyNumber(localPubKey: string, peerPubKey: string) {
+  const left = b64ToBytes(localPubKey)
+  const right = b64ToBytes(peerPubKey)
+  const [first, second] = compareBytes(left, right) <= 0 ? [left, right] : [right, left]
+  const material = concatBytes(first, second)
+  const firstHash = sha256(material)
+  const secondHash = sha256(concatBytes(firstHash, material))
+  const digest = concatBytes(firstHash, secondHash).subarray(0, 60)
+  const groups: string[] = []
+  for (let i = 0; i < 12; i += 1) {
+    const chunk = digest.subarray(i * 5, i * 5 + 5)
+    groups.push(String(uint40(chunk) % 100000).padStart(5, "0"))
+  }
+  return groups.join(" ")
+}
+
+export function safetyNumberRows(number: string) {
+  const groups = number.split(" ")
+  return [groups.slice(0, 4), groups.slice(4, 8), groups.slice(8, 12)]
+}
+
 export async function unwrapIdentitySecret(
   passphrase: string,
   kdfSalt: string,

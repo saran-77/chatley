@@ -149,7 +149,8 @@ export function SettingsPage() {
           Message bodies and attachments are encrypted in your browser. Metadata such as
           who is in a chat, read receipts, and timestamps stays visible to the server.
           This is envelope encryption for a Google sign-in web app, not Signal-style
-          device verification.
+          device verification. In a direct chat you can compare a safety number in
+          person; the verified mark stays only in this browser.
         </p>
         <label className="mt-3 grid gap-1 text-sm">
           Current passphrase
