@@ -20,6 +20,20 @@ function cacheKey(conversationId: string, epoch: number) {
   return `${conversationId}:${epoch}`
 }
 
+export function peekCachedConversationKey(conversationId: string) {
+  let latest: Uint8Array | null = null
+  let epoch = -1
+  for (const [entry, key] of keyCache) {
+    if (!entry.startsWith(`${conversationId}:`)) continue
+    const value = Number(entry.slice(conversationId.length + 1))
+    if (Number.isFinite(value) && value >= epoch) {
+      epoch = value
+      latest = key
+    }
+  }
+  return latest
+}
+
 export function clearConversationKeyCache() {
   keyCache.clear()
 }

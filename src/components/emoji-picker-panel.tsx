@@ -1,5 +1,5 @@
 import { Smile } from "lucide-react"
-import EmojiPicker, { Theme } from "emoji-picker-react"
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -15,9 +15,9 @@ export function EmojiPickerPanel({
     <div className={cn("overflow-hidden rounded-xl border bg-popover shadow-md", className)}>
       <EmojiPicker
         theme={document.documentElement.classList.contains("dark") ? Theme.DARK : Theme.LIGHT}
+        emojiStyle={EmojiStyle.NATIVE}
         width="100%"
         height={320}
-        lazyLoadEmojis
         previewConfig={{ showPreview: false }}
         onEmojiClick={(emoji) => onPick(emoji.emoji)}
       />

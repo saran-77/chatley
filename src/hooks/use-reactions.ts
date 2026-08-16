@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { useAuth } from "@/auth/auth-provider"
@@ -10,7 +10,7 @@ export type Reaction = Tables<"message_reactions">
 export function useReactions(conversationId: string | undefined, enabled: boolean) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const queryKey = ["reactions", conversationId]
+  const queryKey = useMemo(() => ["reactions", conversationId] as const, [conversationId])
 
   const query = useQuery({
     queryKey,

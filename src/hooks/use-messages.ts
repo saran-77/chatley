@@ -10,6 +10,7 @@ import {
   ensureConversationKey,
   getCachedOrUnwrappedKey,
   packCiphertext,
+  peekCachedConversationKey,
 } from "@/lib/envelope"
 import { uploadChatFile, uploadChatImage, uploadChatVoice } from "@/lib/media"
 import { extractUrls, parsePayload, type Payload } from "@/lib/payload"
@@ -60,7 +61,10 @@ async function markConversationRead(
 ) {
   const at = new Date().toISOString()
   let readMark: string | undefined
-  if (identitySecret) {
+  const cached = peekCachedConversationKey(conversationId)
+  if (cached) {
+    readMark = packCiphertext(cached, at)
+  } else if (identitySecret) {
     try {
       const { key } = await ensureConversationKey(conversationId, identitySecret)
       readMark = packCiphertext(key, at)

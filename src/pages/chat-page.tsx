@@ -619,7 +619,7 @@ export function ChatPage() {
           {draft.trim() || editing ? (
             <motion.div
               className="relative shrink-0"
-              whileTap={reduced ? undefined : { scale: 0.86 }}
+              whileTap={reduced ? undefined : { scale: 0.92 }}
               animate={reduced ? undefined : { scale: 1 }}
               transition={springPop}
             >
