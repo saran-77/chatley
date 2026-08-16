@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 import { useAuth } from "@/auth/auth-provider"
+import { decryptText, encryptText } from "@/lib/crypto"
 import { supabase } from "@/lib/supabase"
 
 const PRESENCE_TOPIC = "online-users"
@@ -99,10 +100,12 @@ export function usePresence() {
   return onlineIds
 }
 
-export function useTyping(conversationId: string | undefined) {
+export function useTyping(conversationId: string | undefined, conversationKey: Uint8Array | null) {
   const { user } = useAuth()
   const [typingIds, setTypingIds] = useState<string[]>([])
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const keyRef = useRef(conversationKey)
+  keyRef.current = conversationKey
 
   useEffect(() => {
     if (!conversationId || !user?.id) return
@@ -124,11 +127,19 @@ export function useTyping(conversationId: string | undefined) {
       channelRef.current = channel
       channel
         .on("broadcast", { event: "typing" }, ({ payload }) => {
-          const from = payload?.userId as string | undefined
+          const key = keyRef.current
+          const nonce = payload?.nonce as string | undefined
+          const body = payload?.body as string | undefined
+          if (!key || !nonce || !body) return
+          let from: string | undefined
+          try {
+            const parsed = JSON.parse(decryptText(key, nonce, body)) as { userId?: string }
+            from = parsed.userId
+          } catch {
+            return
+          }
           if (!from || from === user.id) return
-          setTypingIds((current) =>
-            current.includes(from) ? current : [...current, from],
-          )
+          setTypingIds((current) => (current.includes(from!) ? current : [...current, from!]))
           window.setTimeout(() => {
             setTypingIds((current) => current.filter((id) => id !== from))
           }, 2000)
@@ -144,11 +155,13 @@ export function useTyping(conversationId: string | undefined) {
   }, [conversationId, user?.id])
 
   function broadcastTyping() {
-    if (!user?.id) return
+    const key = keyRef.current
+    if (!user?.id || !key) return
+    const encrypted = encryptText(key, JSON.stringify({ userId: user.id }))
     void channelRef.current?.send({
       type: "broadcast",
       event: "typing",
-      payload: { userId: user.id },
+      payload: encrypted,
     })
   }
 

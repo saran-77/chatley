@@ -2,19 +2,19 @@ import { type Transition } from "framer-motion"
 
 export const springPop: Transition = {
   type: "spring",
-  stiffness: 420,
-  damping: 28,
-  mass: 0.8,
+  stiffness: 520,
+  damping: 24,
+  mass: 0.7,
 }
 
 export const springSoft: Transition = {
   type: "spring",
-  stiffness: 280,
-  damping: 26,
+  stiffness: 340,
+  damping: 24,
 }
 
 export const easeOut: Transition = {
-  duration: 0.22,
+  duration: 0.18,
   ease: [0.22, 1, 0.36, 1],
 }
 

@@ -249,6 +249,21 @@ export function decryptPayload(key: Uint8Array, nonce: string, body: string) {
   return parsePayload(decryptText(key, nonce, body))
 }
 
+export function packCiphertext(key: Uint8Array, plaintext: string) {
+  const { nonce, body } = encryptText(key, plaintext)
+  return `${nonce}.${body}`
+}
+
+export function unpackCiphertext(key: Uint8Array, packed: string) {
+  const split = packed.indexOf(".")
+  if (split < 0) return null
+  try {
+    return decryptText(key, packed.slice(0, split), packed.slice(split + 1))
+  } catch {
+    return null
+  }
+}
+
 export function encryptMediaBytes(key: Uint8Array, bytes: Uint8Array) {
   const { nonce, ciphertext } = encryptBytes(key, bytes)
   return { mediaNonce: bytesToB64(nonce), ciphertext }

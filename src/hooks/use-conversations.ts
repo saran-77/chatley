@@ -10,6 +10,7 @@ import {
   ensureConversationKey,
   loadMyConversationKeys,
   rotateConversationEpoch,
+  unpackCiphertext,
 } from "@/lib/envelope"
 import { uploadGroupAvatar } from "@/lib/media"
 import { parsePayload, previewText } from "@/lib/payload"
@@ -90,7 +91,7 @@ export function useConversations() {
         supabase
           .from("conversations")
           .select(
-            "id, type, name, avatar_path, invite_token, created_at, key_epoch, conversation_members(user_id, last_read_at, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, key_epoch, sender_id, sent_at, deleted_at)",
+            "id, type, name, avatar_path, invite_token, created_at, key_epoch, conversation_members(user_id, last_read_at, read_mark, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, key_epoch, sender_id, sent_at, deleted_at)",
           )
           .order("created_at", { ascending: false }),
         supabase.from("message_hides").select("message_id").eq("user_id", user!.id),
@@ -101,14 +102,17 @@ export function useConversations() {
       const hiddenIds = new Set((hides ?? []).map((row) => row.message_id))
 
       const items = (data ?? []).map((row) => {
+        const chatKey = conversationKeyLookup(keys, row.id, row.key_epoch)
         const members = (row.conversation_members ?? [])
           .map((member) => {
             const profile = member.profiles as Tables<"profiles"> | null
             if (!profile) return null
+            const marked =
+              member.read_mark && chatKey ? unpackCiphertext(chatKey, member.read_mark) : null
             return {
               ...profile,
               membershipStatus: (member.status === "pending" ? "pending" : "joined") as MembershipStatus,
-              lastReadAt: member.last_read_at ?? null,
+              lastReadAt: marked ?? member.last_read_at ?? null,
             }
           })
           .filter(Boolean) as ChatMember[]
@@ -151,7 +155,7 @@ export function useConversations() {
           members,
           lastMessage,
           lastPreview,
-          lastReadAt: myMembership?.last_read_at ?? null,
+          lastReadAt: members.find((member) => member.id === user?.id)?.lastReadAt ?? myMembership?.last_read_at ?? null,
           pinnedAt: myMembership?.pinned_at ?? null,
           hiddenAt: myMembership?.hidden_at ?? null,
           myStatus,

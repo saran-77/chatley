@@ -1,6 +1,6 @@
 import { ArrowLeft, ImageIcon, Paperclip, Pencil, Reply, Send, Shield, ShieldAlert, ShieldCheck, Trash2, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { Link, useNavigate, useParams } from "react-router"
 
@@ -38,12 +38,13 @@ import { usePresence, useTyping } from "@/hooks/use-presence"
 import { useReactions } from "@/hooks/use-reactions"
 import { useVisualViewportHeight } from "@/hooks/use-visual-viewport"
 import { springPop } from "@/lib/motion"
+import { ensureConversationKey } from "@/lib/envelope"
 import { formatLastSeen } from "@/lib/time"
 
 export function ChatPage() {
   const { conversationId } = useParams()
   const { user } = useAuth()
-  const { publicKey } = useIdentity()
+  const { publicKey, secretKey } = useIdentity()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const { data: conversations = [] } = useConversations()
@@ -77,7 +78,25 @@ export function ChatPage() {
     Boolean(canChat),
   )
   const onlineIds = usePresence()
-  const { typingIds, broadcastTyping } = useTyping(conversationId)
+  const [chatKey, setChatKey] = useState<Uint8Array | null>(null)
+  useEffect(() => {
+    if (!conversationId || !secretKey || !canChat) {
+      setChatKey(null)
+      return
+    }
+    let cancelled = false
+    void ensureConversationKey(conversationId, secretKey)
+      .then(({ key }) => {
+        if (!cancelled) setChatKey(key)
+      })
+      .catch(() => {
+        if (!cancelled) setChatKey(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canChat, conversationId, secretKey])
+  const { typingIds, broadcastTyping } = useTyping(conversationId, chatKey)
   const [draft, setDraft] = useState("")
   const [composerError, setComposerError] = useState<string | null>(null)
   const [groupOpen, setGroupOpen] = useState(false)
@@ -600,7 +619,7 @@ export function ChatPage() {
           {draft.trim() || editing ? (
             <motion.div
               className="relative shrink-0"
-              whileTap={reduced ? undefined : { scale: 0.88 }}
+              whileTap={reduced ? undefined : { scale: 0.86 }}
               animate={reduced ? undefined : { scale: 1 }}
               transition={springPop}
             >

@@ -62,6 +62,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    supabase.auth.startAutoRefresh()
+    const keepAlive = () => {
+      if (document.visibilityState !== "visible") return
+      supabase.auth.startAutoRefresh()
+      void supabase.auth.getSession()
+    }
+    document.addEventListener("visibilitychange", keepAlive)
+    window.addEventListener("focus", keepAlive)
+    return () => {
+      document.removeEventListener("visibilitychange", keepAlive)
+      window.removeEventListener("focus", keepAlive)
+    }
+  }, [])
+
+  useEffect(() => {
     const userId = session?.user.id
     if (!userId) {
       setProfile(null)
@@ -87,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           provider: "google",
           options: {
             redirectTo: `${window.location.origin}/auth/callback`,
-            queryParams: { access_type: "offline", prompt: "consent" },
+            queryParams: { access_type: "offline" },
           },
         })
         return { error: error?.message }

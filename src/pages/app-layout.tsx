@@ -137,7 +137,7 @@ export function AppLayout() {
                         ? { duration: 0 }
                         : { type: "spring", stiffness: 380, damping: 32 },
                     }}
-                    whileHover={reduced ? undefined : { y: -1, scale: 1.015 }}
+                    whileHover={reduced ? undefined : { y: -2, scale: 1.02 }}
                     className="mb-1 rounded-xl hover:shadow-[0_10px_24px_-16px_color-mix(in_oklch,var(--primary),transparent_40%)]"
                   >
                     <div className="flex items-center">

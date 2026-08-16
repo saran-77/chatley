@@ -36,18 +36,6 @@ export function LoginPage() {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      <motion.div
-        aria-hidden="true"
-        className="pointer-events-none absolute top-[18%] left-[12%] size-24 rounded-full bg-primary/25 blur-2xl"
-        animate={reduced ? undefined : { y: [0, -18, 0], x: [0, 10, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-[14%] bottom-[22%] size-32 rounded-3xl bg-[color-mix(in_oklch,oklch(0.7_0.08_145),transparent_55%)] blur-2xl"
-        animate={reduced ? undefined : { y: [0, 16, 0], rotate: [8, 16, 8] }}
-        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
-      />
       <motion.div variants={staggerFast} initial="initial" animate="animate">
         <motion.div variants={item} transition={reduced ? { duration: 0.16 } : springPop}>
           <Card className="glass-panel w-full max-w-sm bg-transparent shadow-[0_24px_80px_-28px_color-mix(in_oklch,var(--primary),transparent_50%)]">

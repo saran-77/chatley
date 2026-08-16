@@ -38,6 +38,7 @@ export type Database = {
           joined_at: string
           last_read_at: string | null
           pinned_at: string | null
+          read_mark: string | null
           role: string
           status: string
           user_id: string
@@ -49,6 +50,7 @@ export type Database = {
           joined_at?: string
           last_read_at?: string | null
           pinned_at?: string | null
+          read_mark?: string | null
           role?: string
           status?: string
           user_id: string
@@ -60,6 +62,7 @@ export type Database = {
           joined_at?: string
           last_read_at?: string | null
           pinned_at?: string | null
+          read_mark?: string | null
           role?: string
           status?: string
           user_id?: string

@@ -1,10 +1,17 @@
-import { supabase } from "@/lib/supabase"
 import type { LinkPreview } from "@/lib/payload"
 
-export async function unfurlUrl(url: string): Promise<LinkPreview | null> {
-  const { data, error } = await supabase.functions.invoke("unfurl", { body: { url } })
-  if (error || !data) return null
-  const preview = data as LinkPreview
-  if (!preview.url) return null
-  return preview
+export function previewFromUrl(url: string): LinkPreview | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null
+    const title = parsed.hostname.replace(/^www\./i, "")
+    const rest = `${parsed.pathname}${parsed.search}`
+    return {
+      url: parsed.toString(),
+      title,
+      description: rest && rest !== "/" ? rest.replace(/^\//, "") : undefined,
+    }
+  } catch {
+    return null
+  }
 }

@@ -9,11 +9,12 @@ import {
   encryptPayload,
   ensureConversationKey,
   getCachedOrUnwrappedKey,
+  packCiphertext,
 } from "@/lib/envelope"
 import { uploadChatFile, uploadChatImage, uploadChatVoice } from "@/lib/media"
 import { extractUrls, parsePayload, type Payload } from "@/lib/payload"
 import { supabase } from "@/lib/supabase"
-import { unfurlUrl } from "@/lib/unfurl"
+import { previewFromUrl } from "@/lib/unfurl"
 import type { Tables } from "@/lib/database.types"
 
 export type ChatMessage = Tables<"messages"> & {
@@ -52,21 +53,37 @@ function readMessage(
   }
 }
 
-async function markConversationRead(conversationId: string, userId: string) {
+async function markConversationRead(
+  conversationId: string,
+  userId: string,
+  identitySecret?: Uint8Array | null,
+) {
+  const at = new Date().toISOString()
+  let readMark: string | undefined
+  if (identitySecret) {
+    try {
+      const { key } = await ensureConversationKey(conversationId, identitySecret)
+      readMark = packCiphertext(key, at)
+    } catch {
+      // Keep last_read_at even if wrapping the mark fails.
+    }
+  }
   await supabase
     .from("conversation_members")
-    .update({ last_read_at: new Date().toISOString(), hidden_at: null })
+    .update({
+      last_read_at: at,
+      hidden_at: null,
+      ...(readMark ? { read_mark: readMark } : {}),
+    })
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
 }
 
-async function withPreviews(payload: Payload): Promise<Payload> {
+function withPreviews(payload: Payload): Payload {
   if (payload.kind !== "text") return payload
-  const urls = extractUrls(payload.text)
-  if (!urls.length) return payload
-  const previews = (await Promise.all(urls.map(unfurlUrl))).filter(
-    (preview): preview is NonNullable<typeof preview> => Boolean(preview),
-  )
+  const previews = extractUrls(payload.text)
+    .map(previewFromUrl)
+    .filter((preview): preview is NonNullable<typeof preview> => Boolean(preview))
   return previews.length ? { ...payload, previews } : payload
 }
 
@@ -90,7 +107,7 @@ async function insertEncryptedMessage(
     reply_to_id: replyToId ?? null,
   })
   if (error) throw error
-  await markConversationRead(conversationId, userId)
+  await markConversationRead(conversationId, userId, identitySecret)
 }
 
 export function useMessages(conversationId: string | undefined, enabled = true) {
@@ -201,10 +218,18 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
 
   useEffect(() => {
     if (!conversationId || !user?.id || !enabled || !query.data?.length) return
-    void markConversationRead(conversationId, user.id).then(() => {
+    void markConversationRead(conversationId, user.id, secretKey).then(() => {
       void queryClient.invalidateQueries({ queryKey: ["conversations", user.id] })
     })
-  }, [conversationId, enabled, query.data?.length, query.dataUpdatedAt, queryClient, user?.id])
+  }, [
+    conversationId,
+    enabled,
+    query.data?.length,
+    query.dataUpdatedAt,
+    queryClient,
+    secretKey,
+    user?.id,
+  ])
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey })

@@ -15,8 +15,8 @@ export function SendBurst({ burstId }: { burstId: number }) {
             initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
             animate={{
               opacity: 0,
-              x: Math.cos(angle) * 18,
-              y: Math.sin(angle) * 18,
+              x: Math.cos(angle) * 22,
+              y: Math.sin(angle) * 22,
               scale: 0.2,
             }}
             transition={{ duration: 0.28, ease: "easeOut" }}

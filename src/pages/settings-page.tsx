@@ -146,11 +146,13 @@ export function SettingsPage() {
 
       <CollapsibleSection title="Encryption">
         <p className="text-sm text-muted-foreground">
-          Message bodies and attachments are encrypted in your browser. Metadata such as
-          who is in a chat, read receipts, and timestamps stays visible to the server.
-          This is envelope encryption for a Google sign-in web app, not Signal-style
-          device verification. In a direct chat you can compare a safety number in
-          person; the verified mark stays only in this browser.
+          Message bodies, attachments, typing pings, and read marks are encrypted in
+          your browser. Link cards are built from the URL on this device and never
+          sent to a preview server. Who is in a chat, timestamps, and last-seen still
+          stay visible to the server. This is envelope encryption for a Google sign-in
+          web app, not Signal-style device verification. In a direct chat you can
+          compare a safety number in person; the verified mark stays only in this
+          browser.
         </p>
         <label className="mt-3 grid gap-1 text-sm">
           Current passphrase

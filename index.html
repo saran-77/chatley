@@ -5,16 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Chatley</title>
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem("chatley-theme")
-          var theme = stored ? JSON.parse(stored).state.theme : "light"
-          if (theme === "dark") document.documentElement.classList.add("dark")
-          document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light"
-        } catch (e) {}
-      })()
-    </script>
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>
