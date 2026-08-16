@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { useAuth } from "@/auth/auth-provider"
@@ -15,8 +15,13 @@ import {
 import { uploadChatFile, uploadChatImage, uploadChatVoice } from "@/lib/media"
 import { extractUrls, parsePayload, type Payload } from "@/lib/payload"
 import { supabase } from "@/lib/supabase"
+import { applyTabUnread } from "@/lib/tab-indicator"
 import { previewFromUrl } from "@/lib/unfurl"
 import type { Tables } from "@/lib/database.types"
+import {
+  unreadChatCount,
+  type ConversationItem,
+} from "@/hooks/use-conversations"
 
 export type ChatMessage = Tables<"messages"> & {
   payload: Payload | null
@@ -81,6 +86,7 @@ async function markConversationRead(
     })
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
+  return at
 }
 
 function withPreviews(payload: Payload): Payload {
@@ -122,6 +128,25 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
     () => ["messages", conversationId, user?.id] as const,
     [conversationId, user?.id],
   )
+  const [tabActive, setTabActive] = useState(
+    () =>
+      typeof document !== "undefined" &&
+      document.visibilityState === "visible" &&
+      document.hasFocus(),
+  )
+
+  useEffect(() => {
+    const sync = () =>
+      setTabActive(document.visibilityState === "visible" && document.hasFocus())
+    document.addEventListener("visibilitychange", sync)
+    window.addEventListener("focus", sync)
+    window.addEventListener("blur", sync)
+    return () => {
+      document.removeEventListener("visibilitychange", sync)
+      window.removeEventListener("focus", sync)
+      window.removeEventListener("blur", sync)
+    }
+  }, [])
 
   const query = useQuery({
     queryKey,
@@ -221,9 +246,13 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
   }, [conversationId, enabled, secretKey])
 
   useEffect(() => {
-    if (!conversationId || !user?.id || !enabled || !query.data?.length) return
-    void markConversationRead(conversationId, user.id, secretKey).then(() => {
-      void queryClient.invalidateQueries({ queryKey: ["conversations", user.id] })
+    if (!conversationId || !user?.id || !enabled || !query.data?.length || !tabActive) return
+    void markConversationRead(conversationId, user.id, secretKey).then((at) => {
+      const queryKey = ["conversations", user.id] as const
+      const next = queryClient.setQueryData<ConversationItem[]>(queryKey, (items) =>
+        items?.map((item) => (item.id === conversationId ? { ...item, lastReadAt: at } : item)),
+      )
+      if (next) applyTabUnread(unreadChatCount(next, user.id))
     })
   }, [
     conversationId,
@@ -232,6 +261,7 @@ export function useMessages(conversationId: string | undefined, enabled = true) 
     query.dataUpdatedAt,
     queryClient,
     secretKey,
+    tabActive,
     user?.id,
   ])
 

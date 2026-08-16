@@ -15,6 +15,7 @@ import {
 import { uploadGroupAvatar } from "@/lib/media"
 import { parsePayload, previewText } from "@/lib/payload"
 import { supabase } from "@/lib/supabase"
+import { applyTabUnread } from "@/lib/tab-indicator"
 import type { Tables } from "@/lib/database.types"
 
 export type MembershipStatus = "pending" | "joined"
@@ -78,6 +79,42 @@ export function isMessageReadByOthers(
   return others.every((member) => member.lastReadAt && member.lastReadAt >= sentAt)
 }
 
+function messageTime(value: string) {
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+export function isUnread(conversation: ConversationItem, userId: string | undefined) {
+  if (!conversation.lastMessage || !userId) return false
+  if (conversation.lastMessage.sender_id === userId) return false
+  if (!conversation.lastReadAt) return true
+  return messageTime(conversation.lastMessage.sent_at) > messageTime(conversation.lastReadAt)
+}
+
+export function unreadChatCount(items: ConversationItem[], userId: string | undefined) {
+  if (!userId) return 0
+  return items.filter((item) => isUnread(item, userId)).length
+}
+
+function newerMessage(current: LastMessage | null, incoming: LastMessage | null) {
+  if (!incoming || incoming.deleted_at) return current
+  if (!current) return incoming
+  return messageTime(incoming.sent_at) >= messageTime(current.sent_at) ? incoming : current
+}
+
+function lastMessageFromRow(row: Tables<"messages">): LastMessage {
+  return {
+    id: row.id,
+    conversation_id: row.conversation_id,
+    body: row.body,
+    nonce: row.nonce,
+    key_epoch: row.key_epoch,
+    sender_id: row.sender_id,
+    sent_at: row.sent_at,
+    deleted_at: row.deleted_at,
+  }
+}
+
 export function useConversations() {
   const { user } = useAuth()
   const { secretKey } = useIdentity()
@@ -86,6 +123,7 @@ export function useConversations() {
   const query = useQuery({
     queryKey: ["conversations", user?.id],
     enabled: Boolean(user?.id && secretKey),
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<ConversationItem[]> => {
       const [{ data, error }, { data: hides, error: hideError }, keys] = await Promise.all([
         supabase
@@ -93,7 +131,9 @@ export function useConversations() {
           .select(
             "id, type, name, avatar_path, invite_token, created_at, key_epoch, conversation_members(user_id, last_read_at, read_mark, pinned_at, hidden_at, status, profiles!conversation_members_user_id_fkey(*)), messages(id, conversation_id, body, nonce, key_epoch, sender_id, sent_at, deleted_at)",
           )
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .order("sent_at", { referencedTable: "messages", ascending: false })
+          .limit(40, { referencedTable: "messages" }),
         supabase.from("message_hides").select("message_id").eq("user_id", user!.id),
         loadMyConversationKeys(user!.id, secretKey!),
       ])
@@ -128,14 +168,14 @@ export function useConversations() {
                 .filter((message) => !hiddenIds.has(message.id))
                 .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
             : []
-        let lastMessage: LastMessage | null = null
+        const lastMessage =
+          [...visibleMessages].reverse().find((message) => !message.deleted_at) ?? null
         let lastPreview = "No messages yet"
         for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
           const candidate = visibleMessages[i]
           const key = conversationKeyLookup(keys, candidate.conversation_id, candidate.key_epoch)
           const preview = previewLastMessage(candidate, key)
           if (preview) {
-            lastMessage = candidate
             lastPreview = preview
             break
           }
@@ -162,11 +202,19 @@ export function useConversations() {
         }
       })
 
-      return items
+      const previous = queryClient.getQueryData<ConversationItem[]>(["conversations", user!.id])
+      const previousById = new Map((previous ?? []).map((item) => [item.id, item]))
+      const merged = items.map((item) => {
+        const cached = previousById.get(item.id)
+        if (!cached?.lastMessage) return item
+        return { ...item, lastMessage: newerMessage(item.lastMessage, cached.lastMessage) }
+      })
+
+      return merged
         .filter((item) => {
           if (!item.hiddenAt) return true
           if (!item.lastMessage) return false
-          return item.lastMessage.sent_at > item.hiddenAt
+          return messageTime(item.lastMessage.sent_at) > messageTime(item.hiddenAt)
         })
         .sort((a, b) => {
         if (a.pinnedAt && !b.pinnedAt) return -1
@@ -183,14 +231,50 @@ export function useConversations() {
 
   useEffect(() => {
     if (!user?.id) return
+    const queryKey = ["conversations", user.id] as const
+    const syncTab = (items: ConversationItem[] | undefined) => {
+      if (!items) return
+      applyTabUnread(unreadChatCount(items, user.id))
+    }
     const invalidate = () => {
-      void queryClient.invalidateQueries({ queryKey: ["conversations", user.id] })
+      void queryClient.invalidateQueries({ queryKey, refetchType: "all" }).then(() => {
+        syncTab(queryClient.getQueryData<ConversationItem[]>(queryKey))
+      })
     }
     const channel = supabase
       .channel(`conversations-live:${user.id}:${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const row = payload.new as Tables<"messages">
+          if (!row?.id || !row.conversation_id) {
+            invalidate()
+            return
+          }
+          const current = queryClient.getQueryData<ConversationItem[]>(queryKey)
+          if (!current?.some((item) => item.id === row.conversation_id)) {
+            invalidate()
+            return
+          }
+          const next = queryClient.setQueryData<ConversationItem[]>(queryKey, (items) => {
+            if (!items) return items
+            return items.map((item) => {
+              if (item.id !== row.conversation_id || item.myStatus !== "joined") return item
+              return { ...item, lastMessage: newerMessage(item.lastMessage, lastMessageFromRow(row)) }
+            })
+          })
+          syncTab(next)
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages" },
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "messages" },
         invalidate,
       )
       .on(

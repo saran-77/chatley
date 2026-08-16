@@ -28,11 +28,13 @@ import {
 import { Input } from "@/components/ui/input"
 import {
   hideConversation,
+  isUnread,
   setConversationPinned,
   useConversations,
   type ConversationItem,
 } from "@/hooks/use-conversations"
 import { usePresence } from "@/hooks/use-presence"
+import { useTabUnread } from "@/hooks/use-tab-unread"
 import { easeOut } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
@@ -45,16 +47,10 @@ function conversationTitle(conversation: ConversationItem, userId: string | unde
   )
 }
 
-function isUnread(conversation: ConversationItem, userId: string | undefined) {
-  if (!conversation.lastMessage || !userId) return false
-  if (conversation.lastMessage.sender_id === userId) return false
-  if (!conversation.lastReadAt) return true
-  return conversation.lastMessage.sent_at > conversation.lastReadAt
-}
-
 export function AppLayout() {
   const { profile, user, signOut } = useAuth()
   const { data: conversations = [] } = useConversations()
+  useTabUnread()
   const queryClient = useQueryClient()
   const onlineIds = usePresence()
   const [query, setQuery] = useState("")
@@ -75,10 +71,10 @@ export function AppLayout() {
   }, [filtered.length])
 
   return (
-    <div className="flex min-h-dvh bg-transparent">
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-transparent">
       <aside
         className={cn(
-          "glass-panel flex min-h-dvh w-full max-w-[320px] flex-col border-r shadow-[0_20px_50px_-28px_color-mix(in_oklch,var(--primary),transparent_62%)]",
+          "glass-panel flex h-full min-h-0 w-full max-w-[320px] flex-col border-r shadow-[0_20px_50px_-28px_color-mix(in_oklch,var(--primary),transparent_62%)]",
           onList ? "max-md:max-w-none" : "max-md:hidden",
         )}
       >
@@ -254,7 +250,12 @@ export function AppLayout() {
           </div>
         </div>
       </aside>
-      <main className={cn("min-w-0 flex-1", onList && "max-md:hidden")}>
+      <main
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+          onList && "max-md:hidden",
+        )}
+      >
         <Outlet />
       </main>
       <Dialog
