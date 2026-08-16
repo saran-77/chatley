@@ -1,4 +1,4 @@
-import { ArrowLeft, ImageIcon, Paperclip, Pencil, Reply, Send, Shield, ShieldAlert, ShieldCheck, Trash2, X } from "lucide-react"
+import { ArrowLeft, ImageIcon, Paperclip, Pencil, Phone, Reply, Send, Shield, ShieldAlert, ShieldCheck, Trash2, Video, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { inviteUrl, isMessageReadByOthers, useConversations } from "@/hooks/use-conversations"
+import { startCall } from "@/hooks/use-call"
 import { useMessages, type ChatMessage } from "@/hooks/use-messages"
 import { usePeerVerification } from "@/hooks/use-peer-verification"
 import { usePresence, useTyping } from "@/hooks/use-presence"
@@ -43,7 +44,7 @@ import { formatLastSeen } from "@/lib/time"
 
 export function ChatPage() {
   const { conversationId } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { publicKey, secretKey } = useIdentity()
   const navigate = useNavigate()
   const reduced = useReducedMotion()
@@ -247,6 +248,58 @@ export function ChatPage() {
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </button>
+        {conversation.type === "dm" && canChat && other ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Voice call"
+                  onClick={() => {
+                    if (!conversationId) return
+                    void startCall({
+                      conversationId,
+                      peerId: other.id,
+                      peerName: other.display_name,
+                      peerAvatar: other.avatar_url,
+                      selfName: profile?.display_name ?? "You",
+                      selfAvatar: profile?.avatar_url ?? null,
+                      wantVideo: false,
+                    })
+                  }}
+                >
+                  <Phone />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Voice call</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Video call"
+                  onClick={() => {
+                    if (!conversationId) return
+                    void startCall({
+                      conversationId,
+                      peerId: other.id,
+                      peerName: other.display_name,
+                      peerAvatar: other.avatar_url,
+                      selfName: profile?.display_name ?? "You",
+                      selfAvatar: profile?.avatar_url ?? null,
+                      wantVideo: true,
+                    })
+                  }}
+                >
+                  <Video />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Video call</TooltipContent>
+            </Tooltip>
+          </>
+        ) : null}
         {conversation.type === "dm" ? (
           <Tooltip>
             <TooltipTrigger asChild>

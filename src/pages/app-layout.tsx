@@ -8,6 +8,7 @@ import { ConversationAvatar } from "@/components/conversation-avatar"
 import { EmptyLottie } from "@/components/empty-lottie"
 import { InviteActions } from "@/components/invite-actions"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { CallOverlay } from "@/components/call-overlay"
 import { UnreadBadge } from "@/components/unread-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -305,6 +306,7 @@ export function AppLayout() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <CallOverlay />
     </div>
   )
 }
