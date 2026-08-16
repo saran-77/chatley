@@ -13,7 +13,7 @@ import {
   peekCachedConversationKey,
 } from "@/lib/envelope"
 import { uploadChatFile, uploadChatImage, uploadChatVoice } from "@/lib/media"
-import { extractUrls, parsePayload, type Payload } from "@/lib/payload"
+import { extractUrls, parsePayload, type CallPayload, type Payload } from "@/lib/payload"
 import { supabase } from "@/lib/supabase"
 import { applyTabUnread } from "@/lib/tab-indicator"
 import { previewFromUrl } from "@/lib/unfurl"
@@ -118,6 +118,19 @@ async function insertEncryptedMessage(
   })
   if (error) throw error
   await markConversationRead(conversationId, userId, identitySecret)
+}
+
+export async function postCallLog(
+  conversationId: string,
+  userId: string,
+  identitySecret: Uint8Array,
+  payload: CallPayload,
+) {
+  try {
+    await insertEncryptedMessage(conversationId, userId, identitySecret, payload)
+  } catch {
+    // Chat log is best-effort; the call itself already ended.
+  }
 }
 
 export function useMessages(conversationId: string | undefined, enabled = true) {

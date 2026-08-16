@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 
 import { downloadChatFile } from "@/lib/media"
 import { useChatMediaObjectUrl, useChatMediaUrl } from "@/hooks/use-chat-media-url"
-import type { LinkPreview, MediaPayload, Payload } from "@/lib/payload"
+import { callLogLabel, type LinkPreview, type MediaPayload, type Payload } from "@/lib/payload"
 
 function formatDuration(ms: number) {
   const total = Math.max(0, Math.round(ms / 1000))
@@ -152,6 +152,9 @@ export function MessageBody({
 }) {
   if (error) return <p className="italic opacity-80">{error}</p>
   if (!payload) return <p className="italic opacity-80">Empty message</p>
+  if (payload.kind === "call") {
+    return <p className="text-center text-xs">{callLogLabel(payload)}</p>
+  }
   if (payload.kind === "image") return <ImageBubble payload={payload} mediaKey={mediaKey} />
   if (payload.kind === "voice") return <VoiceBubble payload={payload} mediaKey={mediaKey} />
   if (payload.kind === "file") return <FileBubble payload={payload} mediaKey={mediaKey} />

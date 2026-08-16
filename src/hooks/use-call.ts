@@ -2,8 +2,11 @@ import { useEffect, useSyncExternalStore } from "react"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 import { useAuth } from "@/auth/auth-provider"
-import { iceServers } from "@/lib/ice-servers"
+import { useIdentity } from "@/auth/identity-provider"
+import { postCallLog } from "@/hooks/use-messages"
+import { iceServers, audioConstraints, videoConstraints, tuneSenders } from "@/lib/ice-servers"
 import { supabase } from "@/lib/supabase"
+import type { CallOutcome } from "@/lib/payload"
 
 const RING_MS = 30_000
 
@@ -22,6 +25,7 @@ export type CallSnapshot = {
   error: string | null
   localStream: MediaStream | null
   remoteStream: MediaStream | null
+  remoteCameraOn: boolean
 }
 
 type Signal =
@@ -40,6 +44,7 @@ type Signal =
   | { kind: "offer"; callId: string; from: string; sdp: string }
   | { kind: "answer"; callId: string; from: string; sdp: string }
   | { kind: "ice"; callId: string; from: string; candidate: RTCIceCandidateInit | null }
+  | { kind: "camera"; callId: string; from: string; on: boolean }
 
 const idle: CallSnapshot = {
   phase: "idle",
@@ -54,6 +59,7 @@ const idle: CallSnapshot = {
   error: null,
   localStream: null,
   remoteStream: null,
+  remoteCameraOn: false,
 }
 
 let snapshot: CallSnapshot = idle
@@ -70,6 +76,10 @@ let ringTimer = 0
 let canNegotiate = false
 let makingOffer = false
 let isCaller = false
+let identitySecret: Uint8Array | null = null
+let connectedAt = 0
+let cameraSignaled: boolean | null = null
+const loggedCalls = new Set<string>()
 
 function emit() {
   listeners.forEach((listener) => listener())
@@ -149,27 +159,87 @@ async function teardownPc() {
   stopStream(snapshot.remoteStream)
 }
 
-async function hangupInternal(notify: boolean) {
+async function writeCallLog(outcome: CallOutcome) {
+  const callId = snapshot.callId
+  const conversationId = snapshot.conversationId
+  const userId = myUserId
+  const secret = identitySecret
+  if (!callId || !conversationId || !userId || !secret || !isCaller) return
+  if (loggedCalls.has(callId)) return
+  loggedCalls.add(callId)
+  const durationMs = connectedAt ? Math.max(0, Date.now() - connectedAt) : 0
+  await postCallLog(conversationId, userId, secret, {
+    kind: "call",
+    video: snapshot.wantVideo,
+    outcome,
+    durationMs: outcome === "completed" ? durationMs : 0,
+  })
+}
+
+function finishLocal(error: string | null = null) {
+  connectedAt = 0
+  cameraSignaled = null
+  isCaller = false
+  setState({ ...idle, error })
+}
+
+function callOutcomeFromPhase(): CallOutcome {
+  if (connectedAt || snapshot.phase === "active") return "completed"
+  if (snapshot.phase === "outgoing") return "cancelled"
+  return "cancelled"
+}
+
+async function hangupInternal(notify: boolean, outcome?: CallOutcome) {
   const peerId = snapshot.peerId
   const callId = snapshot.callId
   const from = myUserId
+  const resolved = outcome ?? callOutcomeFromPhase()
   if (notify && peerId && callId && from) {
     void sendTo(peerId, { kind: "hangup", callId, from }).catch(() => undefined)
   }
+  await writeCallLog(resolved)
   await teardownPc()
-  isCaller = false
-  setState({ ...idle })
+  finishLocal()
+}
+
+function sendCameraState(on: boolean) {
+  const peerId = snapshot.peerId
+  const callId = snapshot.callId
+  const from = myUserId
+  if (!peerId || !callId || !from) return
+  void sendTo(peerId, { kind: "camera", callId, from, on }).catch(() => undefined)
+}
+
+function liveRemoteCamera(stream: MediaStream | null) {
+  return Boolean(
+    stream?.getVideoTracks().some(
+      (track) => track.readyState === "live" && track.enabled && !track.muted,
+    ),
+  )
+}
+
+function syncRemoteCamera(stream: MediaStream) {
+  const live = liveRemoteCamera(stream)
+  setState({
+    remoteStream: stream,
+    remoteCameraOn: cameraSignaled ?? live,
+    wantVideo: snapshot.wantVideo || live || cameraSignaled === true,
+  })
 }
 
 async function createPc(stream: MediaStream) {
   await teardownPc()
-  const connection = new RTCPeerConnection({ iceServers: iceServers() })
+  const connection = new RTCPeerConnection({
+    iceServers: iceServers(),
+    iceCandidatePoolSize: 8,
+  })
   pc = connection
   const remote = new MediaStream()
   stream.getTracks().forEach((track) => connection.addTrack(track, stream))
   if (!stream.getVideoTracks().length) {
     connection.addTransceiver("video", { direction: "sendrecv" })
   }
+  void tuneSenders(connection)
   connection.onicecandidate = (event) => {
     const peerId = snapshot.peerId
     const callId = snapshot.callId
@@ -189,11 +259,11 @@ async function createPc(stream: MediaStream) {
       if (!current.getTracks().some((existing) => existing.id === track.id)) {
         current.addTrack(track)
       }
-      track.onunmute = () => setState({ remoteStream: current })
-      track.onmute = () => setState({ remoteStream: current })
-      track.onended = () => setState({ remoteStream: current })
+      track.onunmute = () => syncRemoteCamera(current)
+      track.onmute = () => syncRemoteCamera(current)
+      track.onended = () => syncRemoteCamera(current)
     }
-    setState({ remoteStream: current })
+    syncRemoteCamera(current)
   }
   connection.onnegotiationneeded = () => {
     if (!canNegotiate || !isCaller) return
@@ -219,6 +289,9 @@ async function createPc(stream: MediaStream) {
   connection.onconnectionstatechange = () => {
     if (connection.connectionState === "connected") {
       clearRingTimer()
+      if (!connectedAt) connectedAt = Date.now()
+      void tuneSenders(connection)
+      sendCameraState(snapshot.cameraOn)
       setState({ phase: "active", error: null })
     }
     if (connection.connectionState === "failed" || connection.connectionState === "closed") {
@@ -245,10 +318,13 @@ async function flushIce() {
 
 async function media(video: boolean) {
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: true, video })
+    return await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+      video: video ? videoConstraints : false,
+    })
   } catch (error) {
     if (video) {
-      return navigator.mediaDevices.getUserMedia({ audio: true })
+      return navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
     }
     throw error
   }
@@ -275,16 +351,36 @@ async function handleSignal(payload: Signal) {
       wantVideo: payload.wantVideo,
       muted: false,
       cameraOn: false,
+      remoteCameraOn: payload.wantVideo,
       error: null,
     })
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification(`${payload.fromName || "Someone"} is calling`, {
+          body: payload.wantVideo ? "Incoming video call" : "Incoming voice call",
+          tag: "chatley-incoming-call",
+          silent: false,
+        })
+      } catch {
+        // Notifications are optional.
+      }
+    }
     return
   }
   if (!snapshot.callId || payload.callId !== snapshot.callId) return
   if (payload.kind === "decline" || payload.kind === "hangup") {
     const ended = payload.kind === "decline" ? "Declined" : null
+    await writeCallLog(payload.kind === "decline" ? "declined" : callOutcomeFromPhase())
     await teardownPc()
-    isCaller = false
-    setState({ ...idle, error: ended })
+    finishLocal(ended)
+    return
+  }
+  if (payload.kind === "camera") {
+    cameraSignaled = payload.on
+    setState({
+      remoteCameraOn: payload.on,
+      wantVideo: snapshot.wantVideo || payload.on,
+    })
     return
   }
   if (payload.kind === "accept" && isCaller) {
@@ -410,9 +506,13 @@ export async function startCall(input: {
     wantVideo: input.wantVideo,
     muted: false,
     cameraOn: input.wantVideo,
+    remoteCameraOn: input.wantVideo,
     error: null,
   })
   try {
+    if ("Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission()
+    }
     const stream = await media(input.wantVideo)
     const videoTrack = stream.getVideoTracks()[0]
     if (videoTrack && !input.wantVideo) videoTrack.enabled = false
@@ -431,25 +531,17 @@ export async function startCall(input: {
     ringTimer = window.setTimeout(() => {
       void (async () => {
         if (snapshot.phase !== "outgoing") return
-        const peerId = snapshot.peerId
-        const id = snapshot.callId
-        if (peerId && id && myUserId) {
-          void sendTo(peerId, { kind: "hangup", callId: id, from: myUserId }).catch(() => undefined)
-        }
-        await teardownPc()
-        isCaller = false
-        setState({ ...idle, error: "No answer" })
+        await hangupInternal(true, "missed")
+        setState({ error: "No answer" })
       })()
     }, RING_MS)
   } catch {
     await teardownPc()
-    isCaller = false
-    setState({
-      ...idle,
-      error: input.wantVideo
+    finishLocal(
+      input.wantVideo
         ? "Camera or microphone permission is required for calls"
         : "Microphone permission is required for calls",
-    })
+    )
   }
 }
 
@@ -475,13 +567,11 @@ export async function acceptCall() {
       void sendTo(peerId, { kind: "hangup", callId, from: myUserId }).catch(() => undefined)
     }
     await teardownPc()
-    isCaller = false
-    setState({
-      ...idle,
-      error: snapshot.wantVideo
+    finishLocal(
+      snapshot.wantVideo
         ? "Camera or microphone permission is required for calls"
         : "Microphone permission is required for calls",
-    })
+    )
   }
 }
 
@@ -512,6 +602,7 @@ export async function toggleCamera() {
   if (!pc || !snapshot.localStream) return
   const current = snapshot.localStream.getVideoTracks()[0]
   if (current && current.enabled && snapshot.cameraOn) {
+    sendCameraState(false)
     current.enabled = false
     current.stop()
     snapshot.localStream.removeTrack(current)
@@ -521,7 +612,7 @@ export async function toggleCamera() {
     return
   }
   try {
-    const extra = await navigator.mediaDevices.getUserMedia({ video: true })
+    const extra = await navigator.mediaDevices.getUserMedia({ video: videoConstraints })
     const track = extra.getVideoTracks()[0]
     if (!track) return
     snapshot.localStream.addTrack(track)
@@ -530,7 +621,9 @@ export async function toggleCamera() {
       pc.getTransceivers().find((item) => item.receiver.track?.kind === "video")?.sender
     if (videoSender) await videoSender.replaceTrack(track)
     else pc.addTrack(track, snapshot.localStream)
+    void tuneSenders(pc)
     setState({ cameraOn: true, localStream: snapshot.localStream, wantVideo: true })
+    sendCameraState(true)
   } catch {
     setState({ error: "Camera permission is required for video" })
   }
@@ -542,6 +635,8 @@ export function clearCallError() {
 
 export function useCall() {
   const { user } = useAuth()
+  const { secretKey } = useIdentity()
+  identitySecret = secretKey
   const state = useSyncExternalStore(
     (listener) => {
       listeners.add(listener)
@@ -550,6 +645,10 @@ export function useCall() {
     () => snapshot,
     () => snapshot,
   )
+
+  useEffect(() => {
+    identitySecret = secretKey
+  }, [secretKey])
 
   useEffect(() => {
     if (!user?.id) return

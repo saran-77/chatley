@@ -33,7 +33,17 @@ export type VoicePayload = MediaMeta & {
 }
 
 export type MediaPayload = FilePayload | ImagePayload | VoicePayload
-export type Payload = TextPayload | MediaPayload
+
+export type CallOutcome = "completed" | "missed" | "declined" | "cancelled"
+
+export type CallPayload = {
+  kind: "call"
+  video: boolean
+  outcome: CallOutcome
+  durationMs: number
+}
+
+export type Payload = TextPayload | MediaPayload | CallPayload
 
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024
 export const VOICE_MAX_MS = 60_000
@@ -57,8 +67,25 @@ export function parsePayload(raw: string): Payload | null {
       mime?: string
       size?: number
       durationMs?: number
+      video?: boolean
+      outcome?: string
       previews?: LinkPreview[]
       mediaNonce?: string
+    }
+    if (parsed?.kind === "call") {
+      const outcome =
+        parsed.outcome === "missed" ||
+        parsed.outcome === "declined" ||
+        parsed.outcome === "cancelled" ||
+        parsed.outcome === "completed"
+          ? parsed.outcome
+          : "completed"
+      return {
+        kind: "call",
+        video: Boolean(parsed.video),
+        outcome,
+        durationMs: typeof parsed.durationMs === "number" ? parsed.durationMs : 0,
+      }
     }
     if (parsed?.kind === "text" && typeof parsed.text === "string") {
       return {
@@ -93,9 +120,24 @@ export function parsePayload(raw: string): Payload | null {
 export function previewText(payload: Payload | null): string {
   if (!payload) return "No messages yet"
   if (payload.kind === "text") return payload.text
+  if (payload.kind === "call") return callLogLabel(payload)
   if (payload.kind === "image") return "Photo"
   if (payload.kind === "voice") return "Voice message"
   return payload.name || "File"
+}
+
+export function callLogLabel(payload: CallPayload) {
+  const kind = payload.video ? "Video call" : "Voice call"
+  if (payload.outcome === "completed") {
+    if (payload.durationMs < 1000) return kind
+    const total = Math.max(0, Math.round(payload.durationMs / 1000))
+    const minutes = Math.floor(total / 60)
+    const seconds = total % 60
+    return `${kind} · ${minutes}:${seconds.toString().padStart(2, "0")}`
+  }
+  if (payload.outcome === "missed") return `Missed ${kind.toLowerCase()}`
+  if (payload.outcome === "declined") return `Declined ${kind.toLowerCase()}`
+  return `Cancelled ${kind.toLowerCase()}`
 }
 
 export function snippetText(payload: Payload | null, fallback = "Message") {

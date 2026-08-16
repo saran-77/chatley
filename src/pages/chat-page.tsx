@@ -39,6 +39,7 @@ import { usePresence, useTyping } from "@/hooks/use-presence"
 import { useReactions } from "@/hooks/use-reactions"
 import { useVisualViewportHeight } from "@/hooks/use-visual-viewport"
 import { springPop } from "@/lib/motion"
+import { callLogLabel } from "@/lib/payload"
 import { ensureConversationKey } from "@/lib/envelope"
 import { formatLastSeen } from "@/lib/time"
 
@@ -405,12 +406,21 @@ export function ChatPage() {
               Footer: () => <div className="h-3" />,
             }}
             itemContent={(_index, message) => {
+              const deleted = Boolean(message.deleted_at)
+              if (!deleted && message.payload?.kind === "call") {
+                return (
+                  <div className="flex justify-center px-3 py-2">
+                    <p className="rounded-full bg-muted px-3 py-1 text-center text-xs text-muted-foreground">
+                      {callLogLabel(message.payload)}
+                    </p>
+                  </div>
+                )
+              }
               const mine = message.sender_id === user?.id
               const sender = conversation.members.find((member) => member.id === message.sender_id)
               const quoted = message.reply_to_id
                 ? messagesById.get(message.reply_to_id)
                 : undefined
-              const deleted = Boolean(message.deleted_at)
               return (
                 <ChatMessageBubble
                   messageId={message.id}
